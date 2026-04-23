@@ -3,11 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Akyra | Join Shift</title>
+    <title>Akyra | Shift Grid</title>
     
     <!-- Custom Akyra Split-Triangle Favicons -->
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23020617'/%3E%3Cpath d='M50 20 L20 80 L80 80 Z' fill='none' stroke='%23f8fafc' stroke-width='6' stroke-linejoin='round'/%3E%3Cline x1='50' y1='20' x2='50' y2='80' stroke='%23f8fafc' stroke-width='4' stroke-dasharray='6 6'/%3E%3C/svg%3E">
     <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23020617'/%3E%3Cpath d='M50 20 L20 80 L80 80 Z' fill='none' stroke='%23f8fafc' stroke-width='6' stroke-linejoin='round'/%3E%3Cline x1='50' y1='20' x2='50' y2='80' stroke='%23f8fafc' stroke-width='4' stroke-dasharray='6 6'/%3E%3C/svg%3E">
+    
+    <meta name="theme-color" content="#020617">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Akyra">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
@@ -69,15 +74,22 @@
             </div>
         </header>
 
-        <!-- VIEW: Landing -->
+        <!-- VIEW: Landing & Installer -->
         <div id="view-landing" class="view-section active flex-1 flex-col justify-center">
             <h1 class="text-4xl font-extrabold tracking-tight mb-4">
                 Welcome to the <br />
                 <span class="text-blue-500 italic">Operational Engine.</span>
             </h1>
-            <p class="text-slate-400 mb-10 text-sm leading-relaxed">
-                Scanning a Store QR code initializes your device as a node in the Akyra grid.
+            <p class="text-slate-400 mb-8 text-sm leading-relaxed">
+                Install the App to deploy this device as a node in the Akyra grid, or scan to continue in-browser.
             </p>
+            
+            <!-- PWA Install Button (Hidden by default until prompt is ready) -->
+            <button id="installBtn" class="w-full py-4 bg-blue-600 text-white font-bold rounded-2xl shadow-[0_0_20px_-5px_rgba(59,130,246,0.5)] flex items-center justify-center gap-2 active:scale-95 transition-transform mb-4 hidden">
+                <i data-lucide="download" class="w-5 h-5"></i> Install to Grid
+            </button>
+
+            <!-- Standard Continue Button -->
             <button onclick="setView('identify')" class="w-full py-4 bg-white text-slate-950 font-bold rounded-2xl shadow-xl flex items-center justify-center gap-2 active:scale-95 transition-transform">
                 Scan Store QR <i data-lucide="qr-code" class="w-5 h-5"></i>
             </button>
@@ -168,54 +180,98 @@
         </footer>
     </div>
 
-    <!-- Application Logic -->
+    <!-- Application & PWA Installer Logic -->
     <script>
-        // Initialize Lucide Icons
+        // 1. Initialize UI Icons
         lucide.createIcons();
 
-        // State variables
+        // 2. Inject PWA Manifest Dynamically
+        const manifest = {
+            name: "Akyra Grid",
+            short_name: "Akyra",
+            start_url: "Shift.html",
+            display: "standalone",
+            background_color: "#020617",
+            theme_color: "#020617",
+            icons: [{
+                src: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23020617'/%3E%3Cpath d='M50 20 L20 80 L80 80 Z' fill='none' stroke='%23f8fafc' stroke-width='6' stroke-linejoin='round'/%3E%3Cline x1='50' y1='20' x2='50' y2='80' stroke='%23f8fafc' stroke-width='4' stroke-dasharray='6 6'/%3E%3C/svg%3E",
+                sizes: "512x512",
+                type: "image/svg+xml",
+                purpose: "any maskable"
+            }]
+        };
+        const manifestBlob = new Blob([JSON.stringify(manifest)], {type: 'application/json'});
+        const manifestLink = document.createElement('link');
+        manifestLink.rel = 'manifest';
+        manifestLink.href = URL.createObjectURL(manifestBlob);
+        document.head.appendChild(manifestLink);
+
+        // 3. Inject Dummy Service Worker for Installability
+        if ('serviceWorker' in navigator) {
+            const swCode = `
+                self.addEventListener('install', (e) => self.skipWaiting());
+                self.addEventListener('fetch', (e) => e.respondWith(fetch(e.request)));
+            `;
+            const swBlob = new Blob([swCode], { type: 'text/javascript' });
+            navigator.serviceWorker.register(URL.createObjectURL(swBlob));
+        }
+
+        // 4. Handle PWA Install Prompt
+        let deferredPrompt;
+        const installBtn = document.getElementById('installBtn');
+        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+
+        if (!isStandalone) {
+            window.addEventListener('beforeinstallprompt', (e) => {
+                // Prevent Chrome 67 and earlier from automatically showing the prompt
+                e.preventDefault();
+                // Stash the event so it can be triggered later.
+                deferredPrompt = e;
+                // Update UI to notify the user they can add to home screen
+                installBtn.classList.remove('hidden');
+            });
+
+            installBtn.addEventListener('click', async () => {
+                if (deferredPrompt) {
+                    deferredPrompt.prompt();
+                    const { outcome } = await deferredPrompt.userChoice;
+                    if (outcome === 'accepted') {
+                        installBtn.classList.add('hidden'); // Hide button if they accepted
+                    }
+                    deferredPrompt = null;
+                }
+            });
+        }
+
+        // 5. Shift Flow Logic
         let associateEEID = '';
         let associateName = '';
 
-        // Function to handle switching views
         function setView(viewId) {
-            // Hide all views
-            document.querySelectorAll('.view-section').forEach(el => {
-                el.classList.remove('active');
-            });
-            // Show the target view
+            document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
             document.getElementById('view-' + viewId).classList.add('active');
             lucide.createIcons();
         }
 
-        // Handle Identity Form Submission
         document.getElementById('identityForm').addEventListener('submit', function(e) {
             e.preventDefault();
-            
-            // Save the data
             associateEEID = document.getElementById('eeidInput').value;
             associateName = document.getElementById('nameInput').value;
 
-            // Trigger the fake Manager Notification
             const noti = document.getElementById('notification');
             document.getElementById('noti-text').innerText = `EEID ${associateEEID}, "${associateName}" has joined your shift!`;
             noti.classList.remove('hidden');
 
-            // Wait 1.5 seconds, hide notification, and move to Station Scan
             setTimeout(() => {
                 noti.classList.add('hidden');
                 setView('station_scan');
             }, 1500);
         });
 
-        // Handle Station Claiming
         function claimStation(stationName) {
-            // Update the UI with the saved data
             document.getElementById('display-station').innerText = stationName;
             document.getElementById('display-name').innerText = associateName;
             document.getElementById('display-eeid').innerText = '#' + associateEEID;
-            
-            // Switch to active shift view
             setView('active_shift');
         }
     </script>
