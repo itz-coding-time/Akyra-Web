@@ -448,6 +448,7 @@ export type Database = {
           is_pull_task: boolean
           is_sticky: boolean
           is_truck_task: boolean
+          pending_verification: boolean
           priority: string
           pull_category: string | null
           store_id: string
@@ -465,6 +466,7 @@ export type Database = {
           is_pull_task?: boolean
           is_sticky?: boolean
           is_truck_task?: boolean
+          pending_verification?: boolean
           priority?: string
           pull_category?: string | null
           store_id: string
@@ -482,6 +484,7 @@ export type Database = {
           is_pull_task?: boolean
           is_sticky?: boolean
           is_truck_task?: boolean
+          pending_verification?: boolean
           priority?: string
           pull_category?: string | null
           store_id?: string

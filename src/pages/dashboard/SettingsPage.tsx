@@ -1,11 +1,14 @@
 import { useAuth } from "../../context"
 import { useNavigate } from "react-router-dom"
+import { usePwaInstall } from "../../hooks"
 import { Button } from "../../components/ui/button"
+import { Download } from "lucide-react"
 
 export function SettingsPage() {
   const { state, signOut } = useAuth()
   const navigate = useNavigate()
   const profile = state.profile
+  const { canInstall, isInstalled, promptInstall } = usePwaInstall()
 
   async function handleSignOut() {
     await signOut()
@@ -23,6 +26,23 @@ export function SettingsPage() {
           <p className="text-sm text-akyra-secondary font-mono">{profile.eeid}</p>
           <p className="text-xs text-akyra-secondary uppercase tracking-widest">{profile.role}</p>
         </div>
+      )}
+
+      {canInstall && (
+        <Button
+          variant="outline"
+          className="w-full gap-2"
+          onClick={promptInstall}
+        >
+          <Download className="w-4 h-4" />
+          Install Akyra App
+        </Button>
+      )}
+
+      {isInstalled && (
+        <p className="text-center text-xs font-mono text-akyra-secondary">
+          ✓ Akyra is installed
+        </p>
       )}
 
       <Button variant="destructive" className="w-full" onClick={handleSignOut}>
