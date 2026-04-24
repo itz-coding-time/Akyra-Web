@@ -30,6 +30,7 @@ export interface ImportPreview {
 export interface ParsedItem {
   item_name: string
   amount_needed?: number // only for inventory
+  code_life_days?: number // only for inventory (Bread/Prep)
 }
 
 // Infer category from filename
@@ -82,7 +83,19 @@ export function parseImportCsv(csvContent: string, target: ImportTarget): Parsed
           Object.values(row)[1]
         )?.trim()
         const amount = amountStr ? parseInt(amountStr) : undefined
-        return { item_name: name, amount_needed: isNaN(amount ?? NaN) ? undefined : amount }
+
+        const codeLifeStr = (
+          row["code_life_days"] ??
+          row["Code Life"] ??
+          row["Code Days"]
+        )?.trim()
+        const codeLife = codeLifeStr ? parseInt(codeLifeStr) : undefined
+
+        return {
+          item_name: name,
+          amount_needed: isNaN(amount ?? NaN) ? undefined : amount,
+          code_life_days: isNaN(codeLife ?? NaN) ? undefined : codeLife,
+        }
       }
 
       return { item_name: name }
@@ -171,6 +184,7 @@ export async function applyImport(
           build_to: inferred.category,
           category: inferred.category,
           amount_needed: item.amount_needed ?? 0,
+          code_life_days: item.code_life_days ?? null,
           amount_have: null,
           is_pulled: false,
         })),

@@ -59,7 +59,10 @@ export function OnboardingPage() {
     setError(null)
     setIsLoading(true)
 
+    console.log("Looking up phrase:", phrase.trim())
     const license = await fetchLicenseByPhrase(phrase.trim())
+    console.log("License result:", license)
+
     setIsLoading(false)
 
     if (!license) {

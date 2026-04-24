@@ -6,6 +6,7 @@ import {
   flagTableItem,
   fetchInventoryByCategory,
   updateInventoryAmountHave,
+  hasExpiringPullEvents,
 } from "../lib"
 import type { Database } from "../types/database.types"
 
@@ -34,19 +35,52 @@ export function useAssociateTasks(
   const fetchAll = useCallback(async () => {
     setIsLoading(true)
 
-    const [taskData, tableData, inventoryData] = await Promise.all([
-      fetchTasksForAssociate(storeId, archetype, associateName),
-      fetchTableItemsByStation(storeId, archetype),
-      fetchInventoryByCategory(storeId, archetype === "Kitchen" ? "RTE" : archetype),
-    ])
+    const taskData = await fetchTasksForAssociate(storeId, archetype, associateName)
+    const tableData = await fetchTableItemsByStation(storeId, archetype)
 
-    // Sort: personally assigned first, then by priority
+    // Kitchen sees both Prep AND Bread pull lists
+    let inventoryData: InventoryItem[] = []
+    if (archetype === "Kitchen" || archetype === "Float") {
+      const [prepData, breadData] = await Promise.all([
+        fetchInventoryByCategory(storeId, "Prep"),
+        fetchInventoryByCategory(storeId, "Bread"),
+      ])
+      inventoryData = [...prepData, ...breadData]
+    }
+
     const sorted = [...taskData].sort((a, b) => {
       const aAssigned = a.assigned_to === associateName ? 1 : 0
       const bAssigned = b.assigned_to === associateName ? 1 : 0
       if (aAssigned !== bAssigned) return bAssigned - aAssigned
       return (PRIORITY_ORDER[b.priority] ?? 0) - (PRIORITY_ORDER[a.priority] ?? 0)
     })
+
+    // Add synthetic Code Check task to the top of the list if needed
+    const hasCodeCheck = await hasExpiringPullEvents(storeId)
+    if (hasCodeCheck) {
+      const codeCheckTask = {
+        id: "code-check-synthetic",
+        store_id: storeId,
+        task_name: "Code Check",
+        archetype: archetype,
+        priority: "Critical",
+        is_sticky: true,
+        is_completed: false,
+        is_orphaned: false,
+        pending_verification: false,
+        completed_by: null,
+        assigned_to: null,
+        task_description: "Expiring items need verification. Tap to review.",
+        expected_minutes: 15,
+        base_points: 10,
+        is_pull_task: false,
+        is_truck_task: false,
+        depends_on_task_id: null,
+        created_at: new Date().toISOString(),
+      } as any
+
+      sorted.unshift(codeCheckTask)
+    }
 
     setTasks(sorted)
     setTableItems(tableData)

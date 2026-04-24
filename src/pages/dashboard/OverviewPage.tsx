@@ -1,9 +1,11 @@
 import { useAuth } from "../../context"
-import { useAssociates, useStationBoard, usePacingBoard } from "../../hooks"
+import { useAssociates, useStationBoard, usePacingBoard, useCodeCheck } from "../../hooks"
 import { StationBoard } from "../../components/StationBoard"
 import { PacingCard } from "../../components/PacingCard"
 import { VerificationPanel } from "../../components/VerificationPanel"
 import { TaskCard } from "../../components/TaskCard"
+import { ShiftResetButton } from "../../components/ShiftResetButton"
+import { CodeCheckPanel } from "../../components/CodeCheckPanel"
 
 export function OverviewPage() {
   const { state } = useAuth()
@@ -13,22 +15,35 @@ export function OverviewPage() {
   const { associates, isLoading: assocLoading } = useAssociates(storeId)
   const { grouped, unclaimed, isLoading: boardLoading, isReassigning, reassign } = useStationBoard(storeId)
   const { pacingData, pendingTasks, orphanedTasks, isLoading: pacingLoading, isVerifying, verify, reject, clearOrphan } = usePacingBoard(storeId)
+  const { expiringItems, isActioning, verifyUsedThrough, submitWaste } = useCodeCheck(storeId)
 
   return (
     <div className="space-y-8">
 
       {/* Greeting */}
-      <div>
-        <h2 className="text-2xl font-black">
-          Welcome, {profile?.display_name ?? "Supervisor"}
-        </h2>
-        <p className="text-akyra-secondary text-sm mt-1">
-          {new Date().toLocaleDateString("en-US", {
-            weekday: "long",
-            month: "long",
-            day: "numeric",
-          })}
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h2 className="text-2xl font-black">
+            Welcome, {profile?.display_name ?? "Supervisor"}
+          </h2>
+          <p className="text-akyra-secondary text-sm mt-1">
+            {new Date().toLocaleDateString("en-US", {
+              weekday: "long",
+              month: "long",
+              day: "numeric",
+            })}
+          </p>
+        </div>
+
+        {storeId && (
+          <ShiftResetButton
+            storeId={storeId}
+            onComplete={() => {
+              // Refetch all data — reload the page is simplest
+              window.location.reload()
+            }}
+          />
+        )}
       </div>
 
       {/* Stats */}
@@ -52,6 +67,16 @@ export function OverviewPage() {
         onVerify={verify}
         onReject={reject}
       />
+
+      {/* Code Check — expiring pull events */}
+      {expiringItems.length > 0 && (
+        <CodeCheckPanel
+          expiringItems={expiringItems}
+          isActioning={isActioning}
+          onVerifyUsedThrough={verifyUsedThrough}
+          onSubmitWaste={submitWaste}
+        />
+      )}
 
       {/* Escalated Tasks — orphaned from expired sessions */}
       {orphanedTasks.length > 0 && (

@@ -112,9 +112,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (eeid: string, pin: string): Promise<SignInResult> => {
       setState((s) => ({ ...s, status: "loading", error: null }))
 
-      const profile = await fetchProfileByEeid(eeid)
+      let profile = null
+      try {
+        profile = await fetchProfileByEeid(eeid)
+      } catch (e) {
+        console.error("fetchProfileByEeid threw:", e)
+      }
 
       if (!profile) {
+        if (!/^\d+$/.test(eeid)) {
+          setState((s) => ({ ...s, status: "signed-out", error: "Invalid EEID format" }))
+          return { kind: "error", message: "EEID must be numeric" }
+        }
         setState((s) => ({ ...s, status: "signed-out" }))
         return { kind: "new-user", eeid }
       }

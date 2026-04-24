@@ -1,10 +1,11 @@
 import { useState } from "react"
-import { useAssociateTasks, useEquipmentIssues } from "../../hooks"
+import { useAssociateTasks, useEquipmentIssues, useCodeCheck } from "../../hooks"
 import { TaskCard } from "../../components/TaskCard"
 import { FlipChecklist } from "../../components/FlipChecklist"
 import { PullList } from "../../components/PullList"
 import { LoadingSpinner } from "../../components/LoadingSpinner"
-import { Wrench } from "lucide-react"
+import { CodeCheckPanel } from "../../components/CodeCheckPanel"
+import { Wrench, AlertTriangle } from "lucide-react"
 import type { FloatMode } from "../../hooks"
 import type { Associate } from "../../types"
 
@@ -46,10 +47,19 @@ export function AssociateTaskView({
     completeTask,
     toggleTableItem,
     updateAmountHave,
+    refetch,
   } = useAssociateTasks(associate.store_id, primaryArchetype, associate.name)
 
   const { submitIssue, isSubmitting } = useEquipmentIssues(associate.store_id)
 
+  const {
+    expiringItems,
+    isActioning,
+    verifyUsedThrough,
+    submitWaste,
+  } = useCodeCheck(associate.store_id)
+
+  const [showCodeCheck, setShowCodeCheck] = useState(false)
   const [showIssueForm, setShowIssueForm] = useState(false)
   const [issueCategory, setIssueCategory] = useState("")
   const [issueDescription, setIssueDescription] = useState("")
@@ -159,43 +169,53 @@ export function AssociateTaskView({
       {/* Content */}
       <div className="px-6 py-6 space-y-8 pb-20 max-w-lg mx-auto">
 
-        {/* My Tasks — pinned top */}
-        {myTasks.length > 0 && (
-          <div>
-            <p className="text-xs font-mono uppercase tracking-widest text-akyra-secondary mb-3">
-              My Tasks · {myTasks.length}
-            </p>
-            <div className="space-y-2">
-              {myTasks.map((task) => (
-                <TaskCard
-                  key={task.id}
-                  task={task}
-                  isPersonal={true}
-                  onComplete={completeTask}
-                />
-              ))}
-            </div>
-          </div>
-        )}
+        {/* Tasks */}
+        <div className="space-y-2">
+          {myTasks.concat(archetypeTasks).map(task => {
+            if (task.id === "code-check-synthetic") {
+              return (
+                <div key="code-check">
+                  <div
+                    onClick={() => setShowCodeCheck(!showCodeCheck)}
+                    className="bg-akyra-surface border-l-4 border-l-akyra-red border border-akyra-red/40 rounded-xl p-4 cursor-pointer active:scale-[0.98] transition-transform"
+                  >
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-akyra-red animate-pulse" />
+                      <p className="font-semibold text-white text-sm">Code Check</p>
+                      <span className="text-[9px] font-mono uppercase tracking-widest bg-akyra-red/20 text-akyra-red px-1.5 py-0.5 rounded ml-auto">
+                        Critical
+                      </span>
+                    </div>
+                    <p className="text-xs text-akyra-secondary mt-1">
+                      {expiringItems.length} item{expiringItems.length > 1 ? "s" : ""} expiring — tap to review
+                    </p>
+                  </div>
 
-        {/* Archetype Tasks */}
-        {archetypeTasks.length > 0 && (
-          <div>
-            <p className="text-xs font-mono uppercase tracking-widest text-akyra-secondary mb-3">
-              {primaryArchetype} Tasks · {archetypeTasks.length}
-            </p>
-            <div className="space-y-2">
-              {archetypeTasks.map((task) => (
-                <TaskCard
-                  key={task.id}
-                  task={task}
-                  isPersonal={false}
-                  onComplete={completeTask}
-                />
-              ))}
-            </div>
-          </div>
-        )}
+                  {showCodeCheck && (
+                    <div className="mt-2">
+                      <CodeCheckPanel
+                        expiringItems={expiringItems}
+                        isActioning={isActioning}
+                        onVerifyUsedThrough={verifyUsedThrough}
+                        onSubmitWaste={submitWaste}
+                      />
+                    </div>
+                  )}
+                </div>
+              )
+            }
+
+            const isPersonal = task.assigned_to === associate.name
+            return (
+              <TaskCard
+                key={task.id}
+                task={task}
+                isPersonal={isPersonal}
+                onComplete={completeTask}
+              />
+            )
+          })}
+        </div>
 
         {myTasks.length === 0 && archetypeTasks.length === 0 && (
           <div className="text-center py-12">
@@ -213,14 +233,24 @@ export function AssociateTaskView({
           />
         )}
 
-        {/* Pull List */}
-        {inventoryItems.length > 0 && (
-          <PullList
-            items={inventoryItems}
-            category={primaryArchetype}
-            onUpdateAmountHave={updateAmountHave}
-          />
-        )}
+        {/* Pull Lists — grouped by category */}
+        {["Bread", "Prep"].map(category => {
+          const categoryItems = inventoryItems.filter(i => i.category === category)
+          if (categoryItems.length === 0) return null
+          return (
+            <PullList
+              key={category}
+              items={categoryItems}
+              category={category}
+              storeId={associate.store_id}
+              onUpdateAmountHave={updateAmountHave}
+              onPullConfirmed={() => {
+                // Refetch tasks — Code Check task may now appear
+                refetch()
+              }}
+            />
+          )
+        })}
       </div>
     </div>
   )
