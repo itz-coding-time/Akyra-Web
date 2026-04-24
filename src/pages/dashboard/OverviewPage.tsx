@@ -1,8 +1,10 @@
 import { useAuth } from "../../context"
+import { useAssociates } from "../../hooks"
 
 export function OverviewPage() {
   const { state } = useAuth()
   const profile = state.profile
+  const { associates, isLoading } = useAssociates(profile?.current_store_id)
 
   return (
     <div className="space-y-6">
@@ -20,7 +22,15 @@ export function OverviewPage() {
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        {["Associates", "Schedule", "Incidents", "Tasks"].map((label) => (
+        <div className="bg-akyra-surface border border-akyra-border rounded-xl p-4">
+          <p className="text-xs font-mono uppercase tracking-widest text-akyra-secondary mb-1">
+            Associates
+          </p>
+          <p className="text-2xl font-black text-white">
+            {isLoading ? "—" : associates.length}
+          </p>
+        </div>
+        {["Schedule", "Incidents", "Tasks"].map((label) => (
           <div
             key={label}
             className="bg-akyra-surface border border-akyra-border rounded-xl p-4"
@@ -32,10 +42,6 @@ export function OverviewPage() {
           </div>
         ))}
       </div>
-
-      <p className="text-center text-xs font-mono text-akyra-secondary">
-        Feature screens coming in W8+
-      </p>
     </div>
   )
 }
