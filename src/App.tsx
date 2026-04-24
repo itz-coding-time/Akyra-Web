@@ -6,8 +6,9 @@ import {
   OverviewPage,
   AssociatesPage,
   SchedulePage,
-  IncidentsPage,
   SettingsPage,
+  ImportPage,
+  EquipmentIssuesPage,
 } from "./pages"
 import { DashboardLayout, LoadingSpinner } from "./components"
 import { AssociateDashboard } from "./pages/associate/AssociateDashboard"
@@ -112,7 +113,7 @@ function App() {
           element={
             <ProtectedRoute>
               <DashboardLayout>
-                <IncidentsPage />
+                <EquipmentIssuesPage />
               </DashboardLayout>
             </ProtectedRoute>
           }
@@ -123,6 +124,16 @@ function App() {
             <ProtectedRoute>
               <DashboardLayout>
                 <SettingsPage />
+              </DashboardLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/import"
+          element={
+            <ProtectedRoute>
+              <DashboardLayout>
+                <ImportPage />
               </DashboardLayout>
             </ProtectedRoute>
           }

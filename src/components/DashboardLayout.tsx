@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from "react-router-dom"
 import { AkyraLogo } from "./AkyraLogo"
 import { PastDueBanner } from "./PastDueBanner"
 import { useAuth } from "../context"
-import { Users, ClipboardList, AlertTriangle, Settings, LayoutGrid } from "lucide-react"
+import { Users, ClipboardList, Wrench, Settings, LayoutGrid, Upload } from "lucide-react"
 
 interface DashboardLayoutProps {
   children: ReactNode
@@ -13,8 +13,9 @@ const navItems = [
   { to: "/dashboard", icon: LayoutGrid, label: "Overview", end: true },
   { to: "/dashboard/associates", icon: Users, label: "Associates" },
   { to: "/dashboard/schedule", icon: ClipboardList, label: "Schedule" },
-  { to: "/dashboard/incidents", icon: AlertTriangle, label: "Incidents" },
+  { to: "/dashboard/incidents", icon: Wrench, label: "Equipment" },
   { to: "/dashboard/settings", icon: Settings, label: "Settings" },
+  { to: "/dashboard/import", icon: Upload, label: "Import" },
 ]
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {

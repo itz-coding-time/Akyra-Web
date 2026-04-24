@@ -3,6 +3,7 @@ import { useAssociates, useStationBoard, usePacingBoard } from "../../hooks"
 import { StationBoard } from "../../components/StationBoard"
 import { PacingCard } from "../../components/PacingCard"
 import { VerificationPanel } from "../../components/VerificationPanel"
+import { TaskCard } from "../../components/TaskCard"
 
 export function OverviewPage() {
   const { state } = useAuth()
@@ -11,7 +12,7 @@ export function OverviewPage() {
 
   const { associates, isLoading: assocLoading } = useAssociates(storeId)
   const { grouped, unclaimed, isLoading: boardLoading, isReassigning, reassign } = useStationBoard(storeId)
-  const { pacingData, pendingTasks, isLoading: pacingLoading, isVerifying, verify, reject } = usePacingBoard(storeId)
+  const { pacingData, pendingTasks, orphanedTasks, isLoading: pacingLoading, isVerifying, verify, reject, clearOrphan } = usePacingBoard(storeId)
 
   return (
     <div className="space-y-8">
@@ -51,6 +52,31 @@ export function OverviewPage() {
         onVerify={verify}
         onReject={reject}
       />
+
+      {/* Escalated Tasks — orphaned from expired sessions */}
+      {orphanedTasks.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <p className="text-xs font-mono uppercase tracking-widest text-akyra-secondary">
+              Escalated Tasks
+            </p>
+            <span className="text-[9px] font-mono bg-akyra-red text-white px-1.5 py-0.5 rounded-full animate-pulse">
+              {orphanedTasks.length}
+            </span>
+          </div>
+          <div className="space-y-2">
+            {orphanedTasks.map(task => (
+              <TaskCard
+                key={task.id}
+                task={task}
+                isPersonal={false}
+                onComplete={() => {}}
+                onClearOrphan={clearOrphan}
+              />
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Pacing cards */}
       {pacingData.length > 0 && (

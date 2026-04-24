@@ -6,6 +6,8 @@ import {
   fetchPendingVerificationTasks,
   verifyTaskComplete,
   rejectTaskCompletion,
+  fetchOrphanedTasks,
+  clearOrphanFlag,
 } from "../lib"
 import { calculateShiftProgress, isAssociateOnClock } from "../lib/timeEngine"
 import { calculatePacingTier } from "../lib/pacing"
@@ -31,6 +33,7 @@ export function usePacingBoard(storeId: string | null | undefined) {
   const [schedule, setSchedule] = useState<ScheduleEntry[]>([])
   const [tasks, setTasks] = useState<Task[]>([])
   const [pendingTasks, setPendingTasks] = useState<Task[]>([])
+  const [orphanedTasks, setOrphanedTasks] = useState<Task[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isVerifying, setIsVerifying] = useState<string | null>(null)
 
@@ -40,15 +43,17 @@ export function usePacingBoard(storeId: string | null | undefined) {
     if (!storeId) return
     setIsLoading(true)
 
-    const [scheduleData, taskData, pendingData] = await Promise.all([
+    const [scheduleData, taskData, pendingData, orphaned] = await Promise.all([
       fetchScheduleForStore(storeId, today),
       fetchTasksForSupervisor(storeId),
       fetchPendingVerificationTasks(storeId),
+      fetchOrphanedTasks(storeId),
     ])
 
     setSchedule(scheduleData)
     setTasks(taskData)
     setPendingTasks(pendingData)
+    setOrphanedTasks(orphaned)
     setIsLoading(false)
   }, [storeId, today])
 
@@ -147,12 +152,19 @@ export function usePacingBoard(storeId: string | null | undefined) {
     setIsVerifying(null)
   }
 
+  async function clearOrphan(taskId: string) {
+    await clearOrphanFlag(taskId)
+    setOrphanedTasks(prev => prev.filter(t => t.id !== taskId))
+  }
+
   return {
     pacingData,
     pendingTasks,
+    orphanedTasks,
     isLoading,
     isVerifying,
     verify,
     reject,
+    clearOrphan,
   }
 }

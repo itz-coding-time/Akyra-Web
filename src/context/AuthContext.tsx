@@ -15,6 +15,7 @@ import {
   createProfileFromOnboarding,
   isLicenseUsable,
   signOut as supabaseSignOut,
+  expireActiveShift,
 } from "../lib/repository"
 import type { AuthState, Profile, SignInResult } from "../types"
 
@@ -204,11 +205,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 
   const signOut = useCallback(async () => {
-    await supabaseSignOut()
+    // Expire active shift if one exists
+    if (state.profile) {
+      const associate = await supabase
+        .from("associates")
+        .select("id")
+        .eq("store_id", state.profile.current_store_id ?? "")
+        .ilike("name", `%${state.profile.display_name.split(" ")[0]}%`)
+        .maybeSingle()
+
+      if (associate.data?.id) {
+        await expireActiveShift(associate.data.id)
+      }
+    }
+
     sessionStorage.removeItem("akyra_station")
     sessionStorage.removeItem("akyra_float_mode")
+    await supabaseSignOut()
     setState({ status: "signed-out", profile: null, licenseWarning: null, error: null })
-  }, [])
+  }, [state.profile])
 
   return (
     <AuthContext.Provider value={{ state, signIn, completeFirstLogin, completeOnboarding, signOut }}>

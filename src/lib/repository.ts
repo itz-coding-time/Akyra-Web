@@ -2,6 +2,8 @@ import { supabase } from "./supabase"
 import type { Database } from "../types/database.types"
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"]
+type ActiveShift = Database["public"]["Tables"]["active_shifts"]["Row"]
+type EquipmentIssue = Database["public"]["Tables"]["equipment_issues"]["Row"]
 type License = Database["public"]["Tables"]["licenses"]["Row"]
 type Organization = Database["public"]["Tables"]["organizations"]["Row"]
 type Store = Database["public"]["Tables"]["stores"]["Row"]
@@ -274,6 +276,90 @@ export async function fetchTasksForSupervisor(storeId: string): Promise<Task[]> 
   return data ?? []
 }
 
+/**
+ * Escalation Engine — runs after expireStaleShifts
+ * Finds tasks assigned to associates whose sessions just expired,
+ * clears the assignee, bumps priority to Critical, sets is_orphaned = true
+ */
+export async function orphanTasksForExpiredSessions(
+  storeId: string,
+  expiredAssociateIds: string[]
+): Promise<number> {
+  if (expiredAssociateIds.length === 0) return 0
+
+  // Get names of expired associates to match against assigned_to
+  const { data: associates } = await supabase
+    .from("associates")
+    .select("name")
+    .in("id", expiredAssociateIds)
+
+  if (!associates || associates.length === 0) return 0
+
+  const names = associates.map(a => a.name)
+
+  // Find tasks assigned to these associates that are not yet complete
+  const { data: tasks } = await supabase
+    .from("tasks")
+    .select("id, task_name, assigned_to")
+    .eq("store_id", storeId)
+    .eq("is_completed", false)
+    .in("assigned_to", names)
+
+  if (!tasks || tasks.length === 0) return 0
+
+  const taskIds = tasks.map(t => t.id)
+
+  // Orphan them: clear assignee, bump to Critical, set orphaned flag
+  const { error } = await supabase
+    .from("tasks")
+    .update({
+      assigned_to: null,
+      priority: "Critical",
+      is_orphaned: true,
+      pending_verification: false,
+    })
+    .in("id", taskIds)
+
+  if (error) {
+    console.error("orphanTasksForExpiredSessions failed:", error.message)
+    return 0
+  }
+
+  console.log(`Escalation Engine: ${tasks.length} task(s) orphaned from expired sessions`)
+  tasks.forEach(t => console.log(`  ↑ "${t.task_name}" (was assigned to ${t.assigned_to})`))
+
+  return tasks.length
+}
+
+export async function fetchOrphanedTasks(storeId: string): Promise<Task[]> {
+  const { data, error } = await supabase
+    .from("tasks")
+    .select("*")
+    .eq("store_id", storeId)
+    .eq("is_orphaned", true)
+    .eq("is_completed", false)
+    .order("created_at", { ascending: false })
+
+  if (error) {
+    console.error("fetchOrphanedTasks failed:", error.message)
+    return []
+  }
+  return data ?? []
+}
+
+export async function clearOrphanFlag(taskId: string): Promise<boolean> {
+  const { error } = await supabase
+    .from("tasks")
+    .update({ is_orphaned: false })
+    .eq("id", taskId)
+
+  if (error) {
+    console.error("clearOrphanFlag failed:", error.message)
+    return false
+  }
+  return true
+}
+
 export async function fetchPendingVerificationTasks(storeId: string): Promise<Task[]> {
   const { data, error } = await supabase
     .from("tasks")
@@ -426,6 +512,120 @@ export async function fetchScheduleForStore(
   return (data ?? []) as unknown as ScheduleEntry[]
 }
 
+// ── Active Shifts (Ghost Protocol) ───────────────────────────────────────
+
+export async function createActiveShift(
+  associateId: string,
+  storeId: string,
+  station: string
+): Promise<ActiveShift | null> {
+  // Deactivate any existing active shift for this associate first
+  await supabase
+    .from("active_shifts")
+    .update({ is_active: false })
+    .eq("associate_id", associateId)
+    .eq("is_active", true)
+
+  const expiresAt = new Date(Date.now() + 10 * 60 * 60 * 1000).toISOString()
+
+  const { data, error } = await supabase
+    .from("active_shifts")
+    .insert({
+      associate_id: associateId,
+      store_id: storeId,
+      station,
+      expires_at: expiresAt,
+      is_active: true,
+    })
+    .select()
+    .maybeSingle()
+
+  if (error) {
+    console.error("createActiveShift failed:", error.message)
+    return null
+  }
+  return data
+}
+
+export async function updateActiveShiftStation(
+  associateId: string,
+  station: string
+): Promise<boolean> {
+  const { error } = await supabase
+    .from("active_shifts")
+    .update({ station })
+    .eq("associate_id", associateId)
+    .eq("is_active", true)
+
+  if (error) {
+    console.error("updateActiveShiftStation failed:", error.message)
+    return false
+  }
+  return true
+}
+
+export async function expireActiveShift(associateId: string): Promise<boolean> {
+  const { error } = await supabase
+    .from("active_shifts")
+    .update({ is_active: false })
+    .eq("associate_id", associateId)
+    .eq("is_active", true)
+
+  if (error) {
+    console.error("expireActiveShift failed:", error.message)
+    return false
+  }
+  return true
+}
+
+export async function fetchActiveShiftsForStore(storeId: string): Promise<ActiveShift[]> {
+  const { data, error } = await supabase
+    .from("active_shifts")
+    .select("*, associates(id, name, current_archetype, role, role_rank)")
+    .eq("store_id", storeId)
+    .eq("is_active", true)
+    .gt("expires_at", new Date().toISOString())
+
+  if (error) {
+    console.error("fetchActiveShiftsForStore failed:", error.message)
+    return []
+  }
+  return data ?? []
+}
+
+export async function fetchMyActiveShift(associateId: string): Promise<ActiveShift | null> {
+  const { data, error } = await supabase
+    .from("active_shifts")
+    .select("*")
+    .eq("associate_id", associateId)
+    .eq("is_active", true)
+    .gt("expires_at", new Date().toISOString())
+    .maybeSingle()
+
+  if (error) {
+    console.error("fetchMyActiveShift failed:", error.message)
+    return null
+  }
+  return data
+}
+
+// Expire sessions past their TTL — run on dashboard refresh
+export async function expireStaleShifts(storeId: string): Promise<number> {
+  const { data, error } = await supabase
+    .from("active_shifts")
+    .update({ is_active: false })
+    .eq("store_id", storeId)
+    .eq("is_active", true)
+    .lt("expires_at", new Date().toISOString())
+    .select()
+
+  if (error) {
+    console.error("expireStaleShifts failed:", error.message)
+    return 0
+  }
+  return data?.length ?? 0
+}
+
 export async function updateScheduleEndTime(
   entryId: string,
   endTime: string
@@ -437,6 +637,95 @@ export async function updateScheduleEndTime(
 
   if (error) {
     console.error("updateScheduleEndTime failed:", error.message)
+    return false
+  }
+  return true
+}
+
+// ── Equipment Issues (The Black Box) ─────────────────────────────────────
+
+export async function fetchEquipmentIssues(storeId: string): Promise<EquipmentIssue[]> {
+  const { data, error } = await supabase
+    .from("equipment_issues")
+    .select("*, associates!reported_by_associate_id(name)")
+    .eq("store_id", storeId)
+    .order("created_at", { ascending: false })
+
+  if (error) {
+    console.error("fetchEquipmentIssues failed:", error.message)
+    return []
+  }
+  return data ?? []
+}
+
+export async function createEquipmentIssue(
+  storeId: string,
+  reportedAtStoreId: string,
+  associateId: string,
+  category: string,
+  description: string,
+  photoFile?: File
+): Promise<EquipmentIssue | null> {
+  let photoUrl: string | null = null
+
+  // Upload photo if provided
+  if (photoFile) {
+    const fileName = `${storeId}/${Date.now()}-${photoFile.name}`
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from("equipment-photos")
+      .upload(fileName, photoFile, { upsert: false })
+
+    if (uploadError) {
+      console.error("Photo upload failed:", uploadError.message)
+    } else {
+      const { data: urlData } = supabase.storage
+        .from("equipment-photos")
+        .getPublicUrl(uploadData.path)
+      photoUrl = urlData.publicUrl
+    }
+  }
+
+  const { data, error } = await supabase
+    .from("equipment_issues")
+    .insert({
+      store_id: storeId,
+      reported_at_store_id: reportedAtStoreId,
+      reported_by_associate_id: associateId || null,
+      category,
+      description,
+      photo_url: photoUrl,
+      status: "New",
+    })
+    .select()
+    .maybeSingle()
+
+  if (error) {
+    console.error("createEquipmentIssue failed:", error.message)
+    return null
+  }
+  return data
+}
+
+export async function updateEquipmentIssueStatus(
+  issueId: string,
+  status: "New" | "Pending" | "Resolved",
+  resolvedByAssociateId?: string
+): Promise<boolean> {
+  type EquipmentIssueUpdate = Database["public"]["Tables"]["equipment_issues"]["Update"]
+  const update: EquipmentIssueUpdate = { status }
+
+  if (status === "Resolved" && resolvedByAssociateId) {
+    update.resolved_by_associate_id = resolvedByAssociateId
+    update.resolved_at = new Date().toISOString()
+  }
+
+  const { error } = await supabase
+    .from("equipment_issues")
+    .update(update)
+    .eq("id", issueId)
+
+  if (error) {
+    console.error("updateEquipmentIssueStatus failed:", error.message)
     return false
   }
   return true

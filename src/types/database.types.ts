@@ -71,6 +71,78 @@ export type Database = {
           },
         ]
       }
+      equipment_issues: {
+        Row: {
+          id: string
+          created_at: string
+          store_id: string
+          reported_at_store_id: string
+          reported_by_associate_id: string | null
+          category: string
+          description: string
+          photo_url: string | null
+          status: string
+          resolved_by_associate_id: string | null
+          resolved_at: string | null
+        }
+        Insert: {
+          id?: string
+          created_at?: string
+          store_id: string
+          reported_at_store_id: string
+          reported_by_associate_id?: string | null
+          category: string
+          description: string
+          photo_url?: string | null
+          status?: string
+          resolved_by_associate_id?: string | null
+          resolved_at?: string | null
+        }
+        Update: {
+          id?: string
+          created_at?: string
+          store_id?: string
+          reported_at_store_id?: string
+          reported_by_associate_id?: string | null
+          category?: string
+          description?: string
+          photo_url?: string | null
+          status?: string
+          resolved_by_associate_id?: string | null
+          resolved_at?: string | null
+        }
+        Relationships: []
+      }
+      active_shifts: {
+        Row: {
+          associate_id: string
+          created_at: string
+          expires_at: string
+          id: string
+          is_active: boolean
+          station: string
+          store_id: string
+        }
+        Insert: {
+          associate_id: string
+          created_at?: string
+          expires_at: string
+          id?: string
+          is_active?: boolean
+          station: string
+          store_id: string
+        }
+        Update: {
+          associate_id?: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          is_active?: boolean
+          station?: string
+          store_id?: string
+        }
+        Relationships: []
+      }
       incidents: {
         Row: {
           associate_id: string
@@ -445,6 +517,7 @@ export type Database = {
           created_at: string
           id: string
           is_completed: boolean
+          is_orphaned: boolean
           is_pull_task: boolean
           is_sticky: boolean
           is_truck_task: boolean
@@ -463,6 +536,7 @@ export type Database = {
           created_at?: string
           id?: string
           is_completed?: boolean
+          is_orphaned?: boolean
           is_pull_task?: boolean
           is_sticky?: boolean
           is_truck_task?: boolean
@@ -481,6 +555,7 @@ export type Database = {
           created_at?: string
           id?: string
           is_completed?: boolean
+          is_orphaned?: boolean
           is_pull_task?: boolean
           is_sticky?: boolean
           is_truck_task?: boolean
