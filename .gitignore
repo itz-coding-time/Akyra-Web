@@ -26,3 +26,4 @@ dist-ssr
 # Environment variables
 .env.local
 .env.*.local
+/.claude/worktrees
