@@ -5,11 +5,12 @@ import { LoadingSpinner } from "../components/LoadingSpinner"
 import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
 import { useAuth } from "../context"
+import { ClaimAccountScreen } from "./ClaimAccountScreen"
 
-type LoginStep = "eeid" | "pin" | "first-login-pin"
+type LoginStep = "eeid" | "pin"
 
 export function LoginPage() {
-  const { signIn, completeFirstLogin } = useAuth()
+  const { signIn } = useAuth()
   const navigate = useNavigate()
 
   const [step, setStep] = useState<LoginStep>("eeid")
@@ -17,6 +18,7 @@ export function LoginPage() {
   const [pin, setPin] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [claimingEeid, setClaimingEeid] = useState<string | null>(null)
 
   async function handleEeidSubmit(e: FormEvent) {
     e.preventDefault()
@@ -32,15 +34,14 @@ export function LoginPage() {
         navigate(`/onboarding?eeid=${encodeURIComponent(eeid.trim())}`)
         break
       case "first-login":
-        setStep("first-login-pin")
+        setClaimingEeid(eeid.trim())
         break
       case "success":
+        navigate("/dashboard")
+        break
       case "error":
-        // If no pin entered yet and it's a returning user, move to pin step
-        if (result.kind === "error" && result.message === "Invalid PIN") {
+        if (result.message === "Invalid PIN") {
           setStep("pin")
-        } else if (result.kind === "success") {
-          navigate("/dashboard")
         } else {
           setError(result.message)
         }
@@ -64,20 +65,18 @@ export function LoginPage() {
     }
   }
 
-  async function handleFirstLoginPinSubmit(e: FormEvent) {
-    e.preventDefault()
-    if (!pin) return
-    setError(null)
-    setIsLoading(true)
-
-    const result = await completeFirstLogin(eeid.trim(), pin)
-    setIsLoading(false)
-
-    if (result.kind === "success") {
-      navigate("/dashboard")
-    } else {
-      setError(result.kind === "error" ? result.message : "Something went wrong")
-    }
+  // First-login path — hand off to ClaimAccountScreen
+  if (claimingEeid) {
+    return (
+      <ClaimAccountScreen
+        eeid={claimingEeid}
+        onBack={() => {
+          setClaimingEeid(null)
+          setEeid("")
+          setError(null)
+        }}
+      />
+    )
   }
 
   return (
@@ -171,55 +170,6 @@ export function LoginPage() {
               disabled={!pin || isLoading}
             >
               {isLoading ? <LoadingSpinner size="sm" /> : "Sign In"}
-            </Button>
-
-            <Button
-              type="button"
-              variant="ghost"
-              className="w-full text-akyra-secondary"
-              onClick={() => { setStep("eeid"); setPin(""); setError(null) }}
-            >
-              ← Back
-            </Button>
-          </form>
-        )}
-
-        {/* PIN Step — first time login */}
-        {step === "first-login-pin" && (
-          <form onSubmit={handleFirstLoginPinSubmit} className="space-y-4">
-            <div className="text-center mb-6">
-              <p className="text-white font-semibold">Welcome!</p>
-              <p className="text-akyra-secondary text-sm mt-1 leading-relaxed">
-                Your account is ready. Set your PIN to get started.
-              </p>
-            </div>
-
-            <div>
-              <label className="text-xs font-mono uppercase tracking-widest text-akyra-secondary mb-2 block">
-                Set Your PIN
-              </label>
-              <Input
-                type="password"
-                inputMode="numeric"
-                placeholder="Choose a 6-digit PIN"
-                value={pin}
-                onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                className="font-mono text-lg text-center tracking-widest bg-akyra-surface border-akyra-border focus:border-white"
-                autoFocus
-                disabled={isLoading}
-              />
-            </div>
-
-            {error && (
-              <p className="text-akyra-red text-sm text-center font-mono">{error}</p>
-            )}
-
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={pin.length < 6 || isLoading}
-            >
-              {isLoading ? <LoadingSpinner size="sm" /> : "Create Account"}
             </Button>
 
             <Button

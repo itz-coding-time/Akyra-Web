@@ -200,6 +200,7 @@ export type Database = {
           amount_needed: number | null
           build_to: string
           category: string
+          code_life_days: number | null
           created_at: string
           id: string
           is_pulled: boolean
@@ -211,6 +212,7 @@ export type Database = {
           amount_needed?: number | null
           build_to: string
           category: string
+          code_life_days?: number | null
           created_at?: string
           id?: string
           is_pulled?: boolean
@@ -222,6 +224,7 @@ export type Database = {
           amount_needed?: number | null
           build_to?: string
           category?: string
+          code_life_days?: number | null
           created_at?: string
           id?: string
           is_pulled?: boolean
@@ -511,6 +514,56 @@ export type Database = {
           },
         ]
       }
+      pull_events: {
+        Row: {
+          id: string
+          created_at: string
+          store_id: string
+          item_id: string
+          item_name: string
+          category: string
+          quantity_pulled: number
+          pulled_date: string
+          expires_date: string
+          is_verified: boolean
+          waste_quantity: number | null
+        }
+        Insert: {
+          id?: string
+          created_at?: string
+          store_id: string
+          item_id: string
+          item_name: string
+          category: string
+          quantity_pulled: number
+          pulled_date: string
+          expires_date: string
+          is_verified?: boolean
+          waste_quantity?: number | null
+        }
+        Update: {
+          id?: string
+          created_at?: string
+          store_id?: string
+          item_id?: string
+          item_name?: string
+          category?: string
+          quantity_pulled?: number
+          pulled_date?: string
+          expires_date?: string
+          is_verified?: boolean
+          waste_quantity?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pull_events_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tasks: {
         Row: {
           archetype: string
@@ -518,6 +571,7 @@ export type Database = {
           base_points: number
           completed_by: string | null
           created_at: string
+          expected_minutes: number | null
           id: string
           is_completed: boolean
           is_orphaned: boolean
@@ -537,6 +591,7 @@ export type Database = {
           base_points?: number
           completed_by?: string | null
           created_at?: string
+          expected_minutes?: number | null
           id?: string
           is_completed?: boolean
           is_orphaned?: boolean
@@ -556,6 +611,7 @@ export type Database = {
           base_points?: number
           completed_by?: string | null
           created_at?: string
+          expected_minutes?: number | null
           id?: string
           is_completed?: boolean
           is_orphaned?: boolean

@@ -1,5 +1,6 @@
 export { LoginPage } from "./LoginPage"
 export { OnboardingPage } from "./OnboardingPage"
+export { ClaimAccountScreen } from "./ClaimAccountScreen"
 export { OverviewPage } from "./dashboard/OverviewPage"
 export { AssociatesPage } from "./dashboard/AssociatesPage"
 export { SchedulePage } from "./dashboard/SchedulePage"
