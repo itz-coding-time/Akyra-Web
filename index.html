@@ -1,136 +1,17 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Akyra | Systems</title>
-<style>
-:root {
---bg-color: #000000;
---text-primary: #ffffff;
---text-secondary: #666666;
---accent: #ffffff;
-}
-
-    body {
-        background-color: var(--bg-color);
-        color: var(--text-primary);
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
-        min-height: 100vh;
-        margin: 0;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-        overflow: hidden;
-        padding: 20px;
-        box-sizing: border-box;
-    }
-
-    .container {
-        text-align: center;
-        animation: fadeIn 2s ease-out;
-        width: 100%;
-        max-width: 600px;
-    }
-
-    /* Responsive Logo */
-    .logo-svg {
-        width: 20vw;
-        max-width: 120px;
-        min-width: 60px;
-        height: auto;
-        margin-bottom: 2rem;
-        animation: breathe 4s ease-in-out infinite;
-        transition: filter 0.3s ease;
-    }
-
-    /* Hover effect for the new link */
-    .logo-link:hover .logo-svg {
-        filter: drop-shadow(0 0 15px rgba(255, 255, 255, 0.4));
-    }
-
-    /* Responsive Brand Name */
-    .brand-name {
-        font-size: clamp(1.5rem, 8vw, 3rem);
-        font-weight: 800;
-        letter-spacing: 0.2em;
-        margin: 0;
-        padding-left: 0.2em; 
-        animation: breathe 4s ease-in-out infinite;
-        white-space: nowrap;
-    }
-
-    .status-container {
-        margin-top: 1.5rem;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 10px;
-    }
-
-    .status-text {
-        font-family: "SF Mono", "Fira Code", monospace;
-        font-size: clamp(0.6rem, 2vw, 0.75rem);
-        text-transform: uppercase;
-        letter-spacing: 0.4em;
-        color: var(--text-secondary);
-    }
-
-    .blink {
-        width: 8px;
-        height: 8px;
-        background-color: #FF0000;
-        border-radius: 50%;
-        animation: pulse-green 2s infinite;
-    }
-
-    @keyframes breathe {
-        0%, 100% { opacity: 0.3; transform: scale(0.98); }
-        50% { opacity: 1; transform: scale(1); }
-    }
-
-    @keyframes fadeIn {
-        from { opacity: 0; transform: translateY(10px); }
-        to { opacity: 1; transform: translateY(0); }
-    }
-
-    @keyframes pulse-green {
-        0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
-        70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(34, 197, 94, 0); }
-        100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
-    }
-
-    /* Mobile specific adjustments */
-    @media (max-width: 480px) {
-        .brand-name {
-            letter-spacing: 0.15em;
-        }
-        .status-text {
-            letter-spacing: 0.2em;
-        }
-    }
-</style>
-</head>
-<body>
-
-<div class="container">
-    <!-- The Logo is now a clickable link to the Shift Grid -->
-    <a href="Shift.html" class="logo-link" title="Enter the Grid">
-        <svg class="logo-svg" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M50 10L90 80H10L50 10Z" stroke="white" stroke-width="4" stroke-linejoin="round"/>
-            <path d="M50 10V80" stroke="white" stroke-width="2" stroke-dasharray="4 4"/>
-            <path d="M30 45L50 80L70 45" stroke="white" stroke-width="2" stroke-linejoin="round"/>
-        </svg>
-    </a>
-
-    <h1 class="brand-name">AKYRA</h1>
-    
-    <div class="status-container">
-        <div class="blink"></div>
-        <span class="status-text">Coming Soon...</span>
-    </div>
-</div>
-
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#000000" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+    <meta name="apple-mobile-web-app-title" content="Akyra" />
+    <meta name="description" content="Akyra — Operational Intelligence" />
+    <title>Akyra</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
 </html>
