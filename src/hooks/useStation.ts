@@ -1,5 +1,10 @@
 import { useState, useEffect } from "react"
-import { claimStation } from "../lib"
+import {
+  claimStation,
+  createActiveShift,
+  updateActiveShiftStation,
+  expireActiveShift,
+} from "../lib"
 import type { Associate } from "../types"
 
 // Station persists for the session only — cleared on sign out
@@ -30,8 +35,13 @@ export function useStation(associate: Associate | null) {
     if (!associate) return false
     setIsClaiming(true)
 
+    // Create active shift row (Ghost Protocol)
+    const activeShift = await createActiveShift(associate.id, associate.store_id, archetype)
+
+    // Also update current_archetype on associate row
     const success = await claimStation(associate.id, archetype)
-    if (success) {
+
+    if (success && activeShift) {
       setStation(archetype)
       sessionStorage.setItem(SESSION_STATION_KEY, archetype)
       if (archetype !== "Float") {
@@ -41,13 +51,18 @@ export function useStation(associate: Associate | null) {
     }
 
     setIsClaiming(false)
-    return success
+    return success && !!activeShift
   }
 
-  function setFloat(mode: FloatMode) {
+  async function setFloat(mode: FloatMode, associateId?: string) {
     setFloatMode(mode)
     if (mode) {
       sessionStorage.setItem(SESSION_FLOAT_MODE_KEY, mode)
+      // Update active shift station to reflect float mode
+      if (associateId) {
+        const floatStation = mode === "pos" ? "POS" : "Kitchen"
+        await updateActiveShiftStation(associateId, `Float-${floatStation}`)
+      }
     } else {
       sessionStorage.removeItem(SESSION_FLOAT_MODE_KEY)
     }
@@ -60,5 +75,10 @@ export function useStation(associate: Associate | null) {
     sessionStorage.removeItem(SESSION_FLOAT_MODE_KEY)
   }
 
-  return { station, floatMode, isClaiming, claim, setFloat, clearStation }
+  async function clearShift(associateId: string) {
+    clearStation()
+    await expireActiveShift(associateId)
+  }
+
+  return { station, floatMode, isClaiming, claim, setFloat, clearStation, clearShift }
 }

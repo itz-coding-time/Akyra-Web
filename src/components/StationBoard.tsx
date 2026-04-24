@@ -83,7 +83,17 @@ export function StationBoard({
                         {associate.name.charAt(0)}
                       </span>
                     </div>
-                    <span className="text-sm text-white">{associate.name}</span>
+                    <div>
+                      <span className="text-sm text-white">{associate.name}</span>
+                      {(associate as any).hasActiveShift && (
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                          <span className="text-[9px] font-mono text-akyra-secondary uppercase tracking-widest">
+                            On shift
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {isReassigning === associate.id ? (
