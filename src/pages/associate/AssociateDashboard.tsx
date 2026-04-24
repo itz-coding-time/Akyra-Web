@@ -1,5 +1,6 @@
 import { useStation } from "../../hooks"
 import { StationClaimScreen } from "./StationClaimScreen"
+import { AssociateTaskView } from "./AssociateTaskView"
 import type { Associate } from "../../types"
 
 interface AssociateDashboardProps {
@@ -54,18 +55,12 @@ export function AssociateDashboard({ associate }: AssociateDashboardProps) {
     )
   }
 
-  // Station claimed — task view placeholder (built in WA4)
   return (
-    <div className="min-h-screen bg-akyra-black flex flex-col items-center justify-center">
-      <p className="font-mono text-akyra-secondary text-sm">
-        {station === "Float" ? `Float → ${floatMode}` : station} task view — coming in WA4
-      </p>
-      <button
-        onClick={() => setFloat(null)}
-        className="mt-4 text-xs font-mono text-akyra-secondary hover:text-white transition-colors"
-      >
-        {station === "Float" ? "Change float mode" : ""}
-      </button>
-    </div>
+    <AssociateTaskView
+      associate={associate}
+      station={station}
+      floatMode={floatMode}
+      onChangeFloatMode={() => setFloat(null)}
+    />
   )
 }

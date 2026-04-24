@@ -1,4 +1,5 @@
 export { useAssociates } from "./useAssociates"
 export { usePwaInstall } from "./usePwaInstall"
 export { useStation } from "./useStation"
+export { useAssociateTasks } from "./useAssociateTasks"
 export type { FloatMode } from "./useStation"
