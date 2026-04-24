@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
+import { SpeedInsights } from "@vercel/speed-insights/react"
 import { useAuth } from "./context"
 import {
   LoginPage,
@@ -134,6 +135,7 @@ function App() {
         />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
+      <SpeedInsights />
     </BrowserRouter>
   )
 }
