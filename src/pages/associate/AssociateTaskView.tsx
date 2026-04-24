@@ -213,14 +213,19 @@ export function AssociateTaskView({
           />
         )}
 
-        {/* Pull List */}
-        {inventoryItems.length > 0 && (
-          <PullList
-            items={inventoryItems}
-            category={primaryArchetype}
-            onUpdateAmountHave={updateAmountHave}
-          />
-        )}
+        {/* Pull Lists — grouped by category */}
+        {["Bread", "Prep"].map(category => {
+          const categoryItems = inventoryItems.filter(i => i.category === category)
+          if (categoryItems.length === 0) return null
+          return (
+            <PullList
+              key={category}
+              items={categoryItems}
+              category={category}
+              onUpdateAmountHave={updateAmountHave}
+            />
+          )
+        })}
       </div>
     </div>
   )

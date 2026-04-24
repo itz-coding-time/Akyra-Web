@@ -34,13 +34,19 @@ export function useAssociateTasks(
   const fetchAll = useCallback(async () => {
     setIsLoading(true)
 
-    const [taskData, tableData, inventoryData] = await Promise.all([
-      fetchTasksForAssociate(storeId, archetype, associateName),
-      fetchTableItemsByStation(storeId, archetype),
-      fetchInventoryByCategory(storeId, archetype === "Kitchen" ? "RTE" : archetype),
-    ])
+    const taskData = await fetchTasksForAssociate(storeId, archetype, associateName)
+    const tableData = await fetchTableItemsByStation(storeId, archetype)
 
-    // Sort: personally assigned first, then by priority
+    // Kitchen sees both Prep AND Bread pull lists
+    let inventoryData: InventoryItem[] = []
+    if (archetype === "Kitchen" || archetype === "Float") {
+      const [prepData, breadData] = await Promise.all([
+        fetchInventoryByCategory(storeId, "Prep"),
+        fetchInventoryByCategory(storeId, "Bread"),
+      ])
+      inventoryData = [...prepData, ...breadData]
+    }
+
     const sorted = [...taskData].sort((a, b) => {
       const aAssigned = a.assigned_to === associateName ? 1 : 0
       const bAssigned = b.assigned_to === associateName ? 1 : 0

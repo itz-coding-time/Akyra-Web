@@ -252,6 +252,7 @@ export async function fetchTasksForAssociate(
     .select("*")
     .eq("store_id", storeId)
     .eq("is_completed", false)
+    .eq("is_orphaned", false)
     .or(`archetype.eq.${archetype},assigned_to.eq.${associateName}`)
     .order("priority", { ascending: false })
 
@@ -259,7 +260,29 @@ export async function fetchTasksForAssociate(
     console.error("fetchTasksForAssociate failed:", error.message)
     return []
   }
-  return data ?? []
+
+  const allTasks = data ?? []
+
+  // Fetch completed task IDs to check dependencies against
+  const { data: completedData } = await supabase
+    .from("tasks")
+    .select("id")
+    .eq("store_id", storeId)
+    .eq("is_completed", true)
+
+  const allCompletedIds = new Set([
+    ...(completedData ?? []).map(t => t.id),
+    ...allTasks
+      .filter(t => t.pending_verification)
+      .map(t => t.id),
+  ])
+
+  // Filter out tasks whose dependency hasn't been completed yet
+  return allTasks.filter(task => {
+    const depId = (task as any).depends_on_task_id
+    if (!depId) return true
+    return allCompletedIds.has(depId)
+  })
 }
 
 export async function fetchTasksForSupervisor(storeId: string): Promise<Task[]> {
@@ -487,6 +510,72 @@ export async function updateInventoryAmountHave(
     return false
   }
   return true
+}
+
+// ── Shift Reset ───────────────────────────────────────────────────────────
+
+export async function resetShiftTasks(storeId: string): Promise<number> {
+  const { data, error } = await supabase
+    .from("tasks")
+    .update({
+      is_completed: false,
+      pending_verification: false,
+      is_orphaned: false,
+      completed_by: null,
+    })
+    .eq("store_id", storeId)
+    .select()
+
+  if (error) {
+    console.error("resetShiftTasks failed:", error.message)
+    return 0
+  }
+  return data?.length ?? 0
+}
+
+export async function resetFlipChecklists(storeId: string): Promise<number> {
+  const { data, error } = await supabase
+    .from("table_items")
+    .update({ is_initialed: true })
+    .eq("store_id", storeId)
+    .select()
+
+  if (error) {
+    console.error("resetFlipChecklists failed:", error.message)
+    return 0
+  }
+  return data?.length ?? 0
+}
+
+export async function closeAllActiveShifts(storeId: string): Promise<number> {
+  const { data, error } = await supabase
+    .from("active_shifts")
+    .update({ is_active: false })
+    .eq("store_id", storeId)
+    .eq("is_active", true)
+    .select()
+
+  if (error) {
+    console.error("closeAllActiveShifts failed:", error.message)
+    return 0
+  }
+  return data?.length ?? 0
+}
+
+export async function startShift(storeId: string): Promise<{
+  tasksReset: number
+  itemsReset: number
+  shiftsClosed: number
+}> {
+  const [tasksReset, itemsReset, shiftsClosed] = await Promise.all([
+    resetShiftTasks(storeId),
+    resetFlipChecklists(storeId),
+    closeAllActiveShifts(storeId),
+  ])
+
+  console.log(`Shift started: ${tasksReset} tasks reset, ${itemsReset} flip items reset, ${shiftsClosed} active shifts closed`)
+
+  return { tasksReset, itemsReset, shiftsClosed }
 }
 
 // ── Schedule ──────────────────────────────────────────────────────────────

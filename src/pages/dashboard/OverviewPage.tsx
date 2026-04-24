@@ -4,6 +4,7 @@ import { StationBoard } from "../../components/StationBoard"
 import { PacingCard } from "../../components/PacingCard"
 import { VerificationPanel } from "../../components/VerificationPanel"
 import { TaskCard } from "../../components/TaskCard"
+import { ShiftResetButton } from "../../components/ShiftResetButton"
 
 export function OverviewPage() {
   const { state } = useAuth()
@@ -18,17 +19,29 @@ export function OverviewPage() {
     <div className="space-y-8">
 
       {/* Greeting */}
-      <div>
-        <h2 className="text-2xl font-black">
-          Welcome, {profile?.display_name ?? "Supervisor"}
-        </h2>
-        <p className="text-akyra-secondary text-sm mt-1">
-          {new Date().toLocaleDateString("en-US", {
-            weekday: "long",
-            month: "long",
-            day: "numeric",
-          })}
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h2 className="text-2xl font-black">
+            Welcome, {profile?.display_name ?? "Supervisor"}
+          </h2>
+          <p className="text-akyra-secondary text-sm mt-1">
+            {new Date().toLocaleDateString("en-US", {
+              weekday: "long",
+              month: "long",
+              day: "numeric",
+            })}
+          </p>
+        </div>
+
+        {storeId && (
+          <ShiftResetButton
+            storeId={storeId}
+            onComplete={() => {
+              // Refetch all data — reload the page is simplest
+              window.location.reload()
+            }}
+          />
+        )}
       </div>
 
       {/* Stats */}
