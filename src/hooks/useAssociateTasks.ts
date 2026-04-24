@@ -1,0 +1,105 @@
+import { useEffect, useState, useCallback } from "react"
+import {
+  fetchTasksForAssociate,
+  markTaskPendingVerification,
+  fetchTableItemsByStation,
+  flagTableItem,
+  fetchInventoryByCategory,
+  updateInventoryAmountHave,
+} from "../lib"
+import type { Database } from "../types/database.types"
+
+type Task = Database["public"]["Tables"]["tasks"]["Row"]
+type TableItem = Database["public"]["Tables"]["table_items"]["Row"]
+type InventoryItem = Database["public"]["Tables"]["inventory_items"]["Row"]
+
+const PRIORITY_ORDER: Record<string, number> = {
+  Critical: 4,
+  High: 3,
+  Normal: 2,
+  Low: 1,
+}
+
+export function useAssociateTasks(
+  storeId: string,
+  archetype: string,
+  associateName: string
+) {
+  const [tasks, setTasks] = useState<Task[]>([])
+  const [tableItems, setTableItems] = useState<TableItem[]>([])
+  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [pendingIds, setPendingIds] = useState<Set<string>>(new Set())
+
+  const fetchAll = useCallback(async () => {
+    setIsLoading(true)
+
+    const [taskData, tableData, inventoryData] = await Promise.all([
+      fetchTasksForAssociate(storeId, archetype, associateName),
+      fetchTableItemsByStation(storeId, archetype),
+      fetchInventoryByCategory(storeId, archetype === "Kitchen" ? "RTE" : archetype),
+    ])
+
+    // Sort: personally assigned first, then by priority
+    const sorted = [...taskData].sort((a, b) => {
+      const aAssigned = a.assigned_to === associateName ? 1 : 0
+      const bAssigned = b.assigned_to === associateName ? 1 : 0
+      if (aAssigned !== bAssigned) return bAssigned - aAssigned
+      return (PRIORITY_ORDER[b.priority] ?? 0) - (PRIORITY_ORDER[a.priority] ?? 0)
+    })
+
+    setTasks(sorted)
+    setTableItems(tableData)
+    setInventoryItems(inventoryData)
+    setIsLoading(false)
+  }, [storeId, archetype, associateName])
+
+  useEffect(() => {
+    fetchAll()
+  }, [fetchAll])
+
+  async function completeTask(taskId: string) {
+    // Optimistic: hide immediately
+    setPendingIds((prev) => new Set(prev).add(taskId))
+    const success = await markTaskPendingVerification(taskId, associateName)
+    if (!success) {
+      // Revert on failure
+      setPendingIds((prev) => {
+        const next = new Set(prev)
+        next.delete(taskId)
+        return next
+      })
+    }
+  }
+
+  async function toggleTableItem(itemId: string, current: boolean) {
+    setTableItems((prev) =>
+      prev.map((i) => (i.id === itemId ? { ...i, is_initialed: !current } : i))
+    )
+    await flagTableItem(itemId, !current)
+  }
+
+  async function updateAmountHave(itemId: string, amount: number) {
+    setInventoryItems((prev) =>
+      prev.map((i) => (i.id === itemId ? { ...i, amount_have: amount } : i))
+    )
+    await updateInventoryAmountHave(itemId, amount)
+  }
+
+  // Tasks filtered to not show pending ones (they're "done" from associate POV)
+  const visibleTasks = tasks.filter((t) => !pendingIds.has(t.id))
+  const myTasks = visibleTasks.filter((t) => t.assigned_to === associateName)
+  const archetypeTasks = visibleTasks.filter((t) => t.assigned_to !== associateName)
+
+  return {
+    myTasks,
+    archetypeTasks,
+    tableItems,
+    inventoryItems,
+    isLoading,
+    completeTask,
+    toggleTableItem,
+    updateAmountHave,
+    refetch: fetchAll,
+  }
+}
