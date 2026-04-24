@@ -205,6 +205,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     await supabaseSignOut()
+    sessionStorage.removeItem("akyra_station")
+    sessionStorage.removeItem("akyra_float_mode")
     setState({ status: "signed-out", profile: null, licenseWarning: null, error: null })
   }, [])
 

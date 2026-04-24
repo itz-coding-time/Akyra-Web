@@ -6,6 +6,10 @@ type License = Database["public"]["Tables"]["licenses"]["Row"]
 type Organization = Database["public"]["Tables"]["organizations"]["Row"]
 type Store = Database["public"]["Tables"]["stores"]["Row"]
 type Associate = Database["public"]["Tables"]["associates"]["Row"]
+type Task = Database["public"]["Tables"]["tasks"]["Row"]
+type ScheduleEntry = Database["public"]["Tables"]["schedule_entries"]["Row"]
+type TableItem = Database["public"]["Tables"]["table_items"]["Row"]
+type InventoryItem = Database["public"]["Tables"]["inventory_items"]["Row"]
 
 // ── Profiles ──────────────────────────────────────────────────────────────
 
@@ -213,4 +217,227 @@ export async function fetchLicenseForProfile(
 
 export async function signOut(): Promise<void> {
   await supabase.auth.signOut()
+}
+
+// ── Station ───────────────────────────────────────────────────────────────
+
+export async function claimStation(
+  associateId: string,
+  archetype: string
+): Promise<boolean> {
+  const { error } = await supabase
+    .from("associates")
+    .update({ current_archetype: archetype })
+    .eq("id", associateId)
+
+  if (error) {
+    console.error("claimStation failed:", error.message)
+    return false
+  }
+  return true
+}
+
+// ── Tasks ─────────────────────────────────────────────────────────────────
+
+export async function fetchTasksForAssociate(
+  storeId: string,
+  archetype: string,
+  associateName: string
+): Promise<Task[]> {
+  const { data, error } = await supabase
+    .from("tasks")
+    .select("*")
+    .eq("store_id", storeId)
+    .eq("is_completed", false)
+    .or(`archetype.eq.${archetype},assigned_to.eq.${associateName}`)
+    .order("priority", { ascending: false })
+
+  if (error) {
+    console.error("fetchTasksForAssociate failed:", error.message)
+    return []
+  }
+  return data ?? []
+}
+
+export async function fetchTasksForSupervisor(storeId: string): Promise<Task[]> {
+  const { data, error } = await supabase
+    .from("tasks")
+    .select("*")
+    .eq("store_id", storeId)
+    .eq("is_completed", false)
+    .order("priority", { ascending: false })
+
+  if (error) {
+    console.error("fetchTasksForSupervisor failed:", error.message)
+    return []
+  }
+  return data ?? []
+}
+
+export async function fetchPendingVerificationTasks(storeId: string): Promise<Task[]> {
+  const { data, error } = await supabase
+    .from("tasks")
+    .select("*")
+    .eq("store_id", storeId)
+    .eq("pending_verification", true)
+    .eq("is_completed", false)
+
+  if (error) {
+    console.error("fetchPendingVerificationTasks failed:", error.message)
+    return []
+  }
+  return data ?? []
+}
+
+export async function markTaskPendingVerification(
+  taskId: string,
+  completedBy: string
+): Promise<boolean> {
+  const { error } = await supabase
+    .from("tasks")
+    .update({ pending_verification: true, completed_by: completedBy })
+    .eq("id", taskId)
+
+  if (error) {
+    console.error("markTaskPendingVerification failed:", error.message)
+    return false
+  }
+  return true
+}
+
+export async function verifyTaskComplete(taskId: string): Promise<boolean> {
+  const { error } = await supabase
+    .from("tasks")
+    .update({ is_completed: true, pending_verification: false })
+    .eq("id", taskId)
+
+  if (error) {
+    console.error("verifyTaskComplete failed:", error.message)
+    return false
+  }
+  return true
+}
+
+export async function rejectTaskCompletion(taskId: string): Promise<boolean> {
+  const { error } = await supabase
+    .from("tasks")
+    .update({ pending_verification: false, completed_by: null })
+    .eq("id", taskId)
+
+  if (error) {
+    console.error("rejectTaskCompletion failed:", error.message)
+    return false
+  }
+  return true
+}
+
+// ── Flip Checklists (table_items) ─────────────────────────────────────────
+
+export async function fetchTableItemsByStation(
+  storeId: string,
+  station: string
+): Promise<TableItem[]> {
+  const { data, error } = await supabase
+    .from("table_items")
+    .select("*")
+    .eq("store_id", storeId)
+    .eq("station", station)
+
+  if (error) {
+    console.error("fetchTableItemsByStation failed:", error.message)
+    return []
+  }
+  return data ?? []
+}
+
+export async function flagTableItem(
+  itemId: string,
+  initialed: boolean
+): Promise<boolean> {
+  const { error } = await supabase
+    .from("table_items")
+    .update({ is_initialed: initialed })
+    .eq("id", itemId)
+
+  if (error) {
+    console.error("flagTableItem failed:", error.message)
+    return false
+  }
+  return true
+}
+
+// ── Pull Lists (inventory_items) ──────────────────────────────────────────
+
+export async function fetchInventoryByCategory(
+  storeId: string,
+  category: string
+): Promise<InventoryItem[]> {
+  const { data, error } = await supabase
+    .from("inventory_items")
+    .select("*")
+    .eq("store_id", storeId)
+    .eq("category", category)
+    .order("item_name")
+
+  if (error) {
+    console.error("fetchInventoryByCategory failed:", error.message)
+    return []
+  }
+  return data ?? []
+}
+
+export async function updateInventoryAmountHave(
+  itemId: string,
+  amountHave: number
+): Promise<boolean> {
+  const { error } = await supabase
+    .from("inventory_items")
+    .update({ amount_have: amountHave })
+    .eq("id", itemId)
+
+  if (error) {
+    console.error("updateInventoryAmountHave failed:", error.message)
+    return false
+  }
+  return true
+}
+
+// ── Schedule ──────────────────────────────────────────────────────────────
+
+export async function fetchScheduleForStore(
+  storeId: string,
+  date?: string
+): Promise<ScheduleEntry[]> {
+  let query = supabase
+    .from("schedule_entries")
+    .select("*, associates(id, name, current_archetype, role)")
+    .eq("store_id", storeId)
+
+  if (date) {
+    query = query.eq("shift_date", date)
+  }
+
+  const { data, error } = await query
+
+  if (error) {
+    console.error("fetchScheduleForStore failed:", error.message)
+    return []
+  }
+  return (data ?? []) as unknown as ScheduleEntry[]
+}
+
+export async function updateScheduleEndTime(
+  entryId: string,
+  endTime: string
+): Promise<boolean> {
+  const { error } = await supabase
+    .from("schedule_entries")
+    .update({ end_time: endTime })
+    .eq("id", entryId)
+
+  if (error) {
+    console.error("updateScheduleEndTime failed:", error.message)
+    return false
+  }
+  return true
 }
