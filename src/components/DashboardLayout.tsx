@@ -84,7 +84,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               to={to}
               end={end}
               className={({ isActive }) =>
-                `relative flex flex-col items-center gap-1 py-3 px-4 transition-colors ${
+                `relative flex flex-col items-center gap-1 py-3 px-2 sm:px-4 transition-colors ${
                   isActive
                     ? "text-white"
                     : "text-akyra-secondary hover:text-white"
@@ -94,7 +94,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               {({ isActive }) => (
                 <>
                   <Icon className={`w-5 h-5 ${isActive ? "stroke-white" : ""}`} />
-                  <span className="text-[9px] font-mono uppercase tracking-widest">
+                  <span className={`text-[9px] font-mono uppercase tracking-widest ${isActive ? "" : "hidden sm:block"}`}>
                     {label}
                   </span>
                   {isActive && (

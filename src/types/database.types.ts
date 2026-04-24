@@ -25,6 +25,7 @@ export type Database = {
           pin_code: string | null
           profile_id: string | null
           role: string
+          role_rank: number
           scheduled_days: string
           store_id: string
         }
@@ -38,6 +39,7 @@ export type Database = {
           pin_code?: string | null
           profile_id?: string | null
           role: string
+          role_rank?: number
           scheduled_days?: string
           store_id: string
         }
@@ -51,6 +53,7 @@ export type Database = {
           pin_code?: string | null
           profile_id?: string | null
           role?: string
+          role_rank?: number
           scheduled_days?: string
           store_id?: string
         }

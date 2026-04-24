@@ -37,16 +37,9 @@ function RoleRouter() {
 
   if (!profile) return null
 
-  const isSupervisor =
-    profile.role === "supervisor" ||
-    profile.role === "store_manager" ||
-    profile.role === "district_manager" ||
-    profile.role === "org_admin"
+  const isCrewOnly = profile.role === "crew"
 
-  if (!isSupervisor) {
-    // Crew associate — needs their associate row to get the full Associate object
-    // For now render AssociateDashboard with a minimal associate shape
-    // WA4 will refine this with a proper associate lookup hook
+  if (isCrewOnly) {
     return (
       <AssociateDashboard
         associate={{
@@ -54,6 +47,7 @@ function RoleRouter() {
           store_id: profile.current_store_id ?? "",
           name: profile.display_name,
           role: profile.role,
+          role_rank: 1,
           current_archetype: "Float",
           pin_code: null,
           scheduled_days: "",

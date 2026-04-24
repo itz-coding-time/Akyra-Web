@@ -66,6 +66,22 @@ export function AssociatesPage() {
         </span>
       </div>
 
+      {/* Registration legend */}
+      <div className="flex items-center gap-4 px-1">
+        <span className="flex items-center gap-1.5 text-[10px] font-mono text-akyra-secondary uppercase tracking-widest">
+          <span className="w-2 h-2 rounded-full bg-white inline-block" />
+          Registered
+        </span>
+        <span className="flex items-center gap-1.5 text-[10px] font-mono text-akyra-secondary uppercase tracking-widest">
+          <span className="w-2 h-2 rounded-full bg-yellow-400 inline-block" />
+          Pending
+        </span>
+        <span className="flex items-center gap-1.5 text-[10px] font-mono text-akyra-secondary uppercase tracking-widest">
+          <span className="w-2 h-2 rounded-full bg-akyra-red inline-block" />
+          Unregistered
+        </span>
+      </div>
+
       {Object.entries(grouped).map(([archetype, group]) => (
         <div key={archetype}>
           <p className="text-xs font-mono uppercase tracking-widest text-akyra-secondary mb-3">

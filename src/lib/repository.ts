@@ -104,10 +104,11 @@ export async function fetchStoreByNumberAndOrg(
 
 // ── Associates ────────────────────────────────────────────────────────────
 
-export async function fetchAssociatesByStore(storeId: string): Promise<Associate[]> {
+export async function fetchAssociatesByStore(storeId: string | null | undefined): Promise<Associate[]> {
+  if (!storeId) return []
   const { data, error } = await supabase
     .from("associates")
-    .select("*")
+    .select(`*, profiles!profile_id (id, auth_uid, eeid)`)
     .eq("store_id", storeId)
     .order("name")
 
