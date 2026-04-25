@@ -1,11 +1,18 @@
+import { useState } from "react"
+import { ChevronDown, ChevronUp } from "lucide-react"
 import { useAuth } from "../../context"
-import { useAssociates, useStationBoard, usePacingBoard, useCodeCheck } from "../../hooks"
+import { useAssociates, useStationBoard, usePacingBoard, useCodeCheck, useSupervisorTasks } from "../../hooks"
 import { StationBoard } from "../../components/StationBoard"
 import { PacingCard } from "../../components/PacingCard"
 import { VerificationPanel } from "../../components/VerificationPanel"
 import { TaskCard } from "../../components/TaskCard"
 import { ShiftResetButton } from "../../components/ShiftResetButton"
 import { CodeCheckPanel } from "../../components/CodeCheckPanel"
+import { AssignTaskSheet } from "../../components/AssignTaskSheet"
+import { CreateTaskFAB } from "../../components/CreateTaskFAB"
+import type { Database } from "../../types/database.types"
+
+type Task = Database["public"]["Tables"]["tasks"]["Row"]
 
 export function OverviewPage() {
   const { state } = useAuth()
@@ -14,11 +21,28 @@ export function OverviewPage() {
 
   const { associates, isLoading: assocLoading } = useAssociates(storeId)
   const { grouped, unclaimed, isLoading: boardLoading, isReassigning, reassign } = useStationBoard(storeId)
-  const { pacingData, pendingTasks, orphanedTasks, isLoading: pacingLoading, isVerifying, verify, reject, clearOrphan } = usePacingBoard(storeId)
-  const { expiringItems, isActioning, verifyUsedThrough, submitWaste } = useCodeCheck(storeId)
+  const { pacingData, pendingTasks, isLoading: pacingLoading, isVerifying, verify, reject } = usePacingBoard(storeId)
+  const {
+    expiringItems,
+    isActioning: codeActioning,
+    verifyUsedThrough,
+    submitWaste,
+  } = useCodeCheck(storeId)
+  const {
+    modTasks,
+    allTasks,
+    activeShifts,
+    isCreating,
+    completeModTask,
+    assignTask,
+    createTask,
+  } = useSupervisorTasks(storeId, profile?.display_name ?? "")
+
+  const [myTasksOpen, setMyTasksOpen] = useState(true)
+  const [assigningTask, setAssigningTask] = useState<Task | null>(null)
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 pb-32">
 
       {/* Greeting */}
       <div className="flex items-start justify-between">
@@ -39,7 +63,6 @@ export function OverviewPage() {
           <ShiftResetButton
             storeId={storeId}
             onComplete={() => {
-              // Refetch all data — reload the page is simplest
               window.location.reload()
             }}
           />
@@ -60,6 +83,50 @@ export function OverviewPage() {
         </div>
       </div>
 
+      {/* My Tasks (MOD) — collapsible */}
+      <div>
+        <button
+          onClick={() => setMyTasksOpen(!myTasksOpen)}
+          className="flex items-center gap-2 w-full mb-3"
+        >
+          <p className="text-xs font-mono uppercase tracking-widest text-akyra-secondary">
+            My Tasks (MOD)
+          </p>
+          {modTasks.length > 0 && (
+            <span className="text-[9px] font-mono bg-akyra-red text-white px-1.5 py-0.5 rounded-full">
+              {modTasks.length}
+            </span>
+          )}
+          <span className="ml-auto text-akyra-secondary">
+            {myTasksOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          </span>
+        </button>
+
+        {myTasksOpen && (
+          <div className="space-y-2">
+            {modTasks.length === 0 ? (
+              <p className="text-xs text-akyra-secondary py-4 text-center">No MOD tasks right now.</p>
+            ) : (
+              modTasks.map(task => (
+                <div key={task.id} className="relative">
+                  <TaskCard
+                    task={task}
+                    isPersonal={true}
+                    onComplete={completeModTask}
+                  />
+                  <button
+                    onClick={() => setAssigningTask(task)}
+                    className="absolute top-3 right-3 text-[10px] font-mono uppercase tracking-widest text-akyra-secondary hover:text-white transition-colors"
+                  >
+                    Assign →
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Trust But Verify — pending tasks */}
       <VerificationPanel
         pendingTasks={pendingTasks}
@@ -72,35 +139,10 @@ export function OverviewPage() {
       {expiringItems.length > 0 && (
         <CodeCheckPanel
           expiringItems={expiringItems}
-          isActioning={isActioning}
+          isActioning={codeActioning}
           onVerifyUsedThrough={verifyUsedThrough}
           onSubmitWaste={submitWaste}
         />
-      )}
-
-      {/* Escalated Tasks — orphaned from expired sessions */}
-      {orphanedTasks.length > 0 && (
-        <div>
-          <div className="flex items-center gap-2 mb-3">
-            <p className="text-xs font-mono uppercase tracking-widest text-akyra-secondary">
-              Escalated Tasks
-            </p>
-            <span className="text-[9px] font-mono bg-akyra-red text-white px-1.5 py-0.5 rounded-full animate-pulse">
-              {orphanedTasks.length}
-            </span>
-          </div>
-          <div className="space-y-2">
-            {orphanedTasks.map(task => (
-              <TaskCard
-                key={task.id}
-                task={task}
-                isPersonal={false}
-                onComplete={() => {}}
-                onClearOrphan={clearOrphan}
-              />
-            ))}
-          </div>
-        </div>
       )}
 
       {/* Pacing cards */}
@@ -124,6 +166,22 @@ export function OverviewPage() {
         isLoading={boardLoading}
         isReassigning={isReassigning}
         onReassign={reassign}
+      />
+
+      {/* Assign Task Sheet */}
+      {assigningTask && (
+        <AssignTaskSheet
+          task={assigningTask}
+          activeShifts={activeShifts}
+          onAssign={assignTask}
+          onClose={() => setAssigningTask(null)}
+        />
+      )}
+
+      {/* Create Task FAB */}
+      <CreateTaskFAB
+        isCreating={isCreating}
+        onCreateTask={createTask}
       />
     </div>
   )

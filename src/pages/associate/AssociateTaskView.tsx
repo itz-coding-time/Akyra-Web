@@ -1,10 +1,13 @@
 import { useState } from "react"
+import { useNavigate } from "react-router-dom"
 import { useAssociateTasks, useEquipmentIssues, useCodeCheck } from "../../hooks"
+import { useAuth } from "../../context"
 import { TaskCard } from "../../components/TaskCard"
 import { FlipChecklist } from "../../components/FlipChecklist"
 import { PullList } from "../../components/PullList"
 import { LoadingSpinner } from "../../components/LoadingSpinner"
 import { CodeCheckPanel } from "../../components/CodeCheckPanel"
+import { WhosWorkingPanel } from "../../components/WhosWorkingPanel"
 import { Wrench, AlertTriangle } from "lucide-react"
 import type { FloatMode } from "../../hooks"
 import type { Associate } from "../../types"
@@ -25,7 +28,7 @@ interface AssociateTaskViewProps {
   associate: Associate
   station: string
   floatMode: FloatMode
-  onChangeFloatMode: () => void
+  onChangeFloatMode?: () => void
 }
 
 export function AssociateTaskView({
@@ -48,7 +51,7 @@ export function AssociateTaskView({
     toggleTableItem,
     updateAmountHave,
     refetch,
-  } = useAssociateTasks(associate.store_id, primaryArchetype, associate.name)
+  } = useAssociateTasks(associate.store_id, primaryArchetype, associate.name, associate.id)
 
   const { submitIssue, isSubmitting } = useEquipmentIssues(associate.store_id)
 
@@ -58,6 +61,14 @@ export function AssociateTaskView({
     verifyUsedThrough,
     submitWaste,
   } = useCodeCheck(associate.store_id)
+
+  const { signOut } = useAuth()
+  const navigate = useNavigate()
+
+  async function handleSignOut() {
+    await signOut()
+    navigate("/login")
+  }
 
   const [showCodeCheck, setShowCodeCheck] = useState(false)
   const [showIssueForm, setShowIssueForm] = useState(false)
@@ -105,11 +116,25 @@ export function AssociateTaskView({
               onClick={onChangeFloatMode}
               className="text-xs font-mono uppercase tracking-widest text-akyra-secondary hover:text-white transition-colors"
             >
-              Switch mode
+              Switch
             </button>
           )}
+          <button
+            onClick={handleSignOut}
+            className="text-xs font-mono uppercase tracking-widest text-akyra-secondary hover:text-akyra-red transition-colors"
+          >
+            Sign Out
+          </button>
         </div>
       </header>
+
+      {/* Who's On panel */}
+      <div className="px-6 pt-4">
+        <WhosWorkingPanel
+          storeId={associate.store_id}
+          myAssociateId={associate.id}
+        />
+      </div>
 
       {/* Report Issue form */}
       {showIssueForm && (

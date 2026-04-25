@@ -568,6 +568,7 @@ export type Database = {
         Row: {
           archetype: string
           assigned_to: string | null
+          assigned_to_associate_id: string | null
           base_points: number
           completed_by: string | null
           created_at: string
@@ -581,6 +582,7 @@ export type Database = {
           pending_verification: boolean
           priority: string
           pull_category: string | null
+          queue_position: number | null
           store_id: string
           task_description: string | null
           task_name: string
@@ -588,6 +590,7 @@ export type Database = {
         Insert: {
           archetype: string
           assigned_to?: string | null
+          assigned_to_associate_id?: string | null
           base_points?: number
           completed_by?: string | null
           created_at?: string
@@ -601,6 +604,7 @@ export type Database = {
           pending_verification?: boolean
           priority?: string
           pull_category?: string | null
+          queue_position?: number | null
           store_id: string
           task_description?: string | null
           task_name: string
@@ -608,6 +612,7 @@ export type Database = {
         Update: {
           archetype?: string
           assigned_to?: string | null
+          assigned_to_associate_id?: string | null
           base_points?: number
           completed_by?: string | null
           created_at?: string
@@ -621,6 +626,7 @@ export type Database = {
           pending_verification?: boolean
           priority?: string
           pull_category?: string | null
+          queue_position?: number | null
           store_id?: string
           task_description?: string | null
           task_name?: string

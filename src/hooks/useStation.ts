@@ -5,6 +5,7 @@ import {
   updateActiveShiftStation,
   expireActiveShift,
 } from "../lib"
+import { supabase } from "../lib/supabase"
 import type { Associate } from "../types"
 
 // Station persists for the session only — cleared on sign out
@@ -30,6 +31,40 @@ export function useStation(associate: Associate | null) {
       // Don't clear on unmount — persists for session
     }
   }, [])
+
+  // Realtime: watch for supervisor reassignment
+  useEffect(() => {
+    if (!associate?.id) return
+
+    const channel = supabase
+      .channel(`associate-station-${associate.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "associates",
+          filter: `id=eq.${associate.id}`,
+        },
+        (payload) => {
+          const newArchetype = payload.new.current_archetype
+          const currentStation = sessionStorage.getItem(SESSION_STATION_KEY)
+
+          // If supervisor changed their station, update local state
+          if (newArchetype !== currentStation) {
+            console.log(`Station reassigned by supervisor: ${currentStation} → ${newArchetype}`)
+            setStation(newArchetype)
+            sessionStorage.setItem(SESSION_STATION_KEY, newArchetype)
+            // Clear float mode on reassignment
+            setFloatMode(null)
+            sessionStorage.removeItem(SESSION_FLOAT_MODE_KEY)
+          }
+        }
+      )
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [associate?.id])
 
   async function claim(archetype: string): Promise<boolean> {
     if (!associate) return false

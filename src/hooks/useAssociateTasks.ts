@@ -7,6 +7,7 @@ import {
   fetchInventoryByCategory,
   updateInventoryAmountHave,
   hasExpiringPullEvents,
+  fetchNextQueuedTask,
 } from "../lib"
 import type { Database } from "../types/database.types"
 
@@ -24,7 +25,8 @@ const PRIORITY_ORDER: Record<string, number> = {
 export function useAssociateTasks(
   storeId: string,
   archetype: string,
-  associateName: string
+  associateName: string,
+  associateId: string
 ) {
   const [tasks, setTasks] = useState<Task[]>([])
   const [tableItems, setTableItems] = useState<TableItem[]>([])
@@ -54,6 +56,16 @@ export function useAssociateTasks(
       if (aAssigned !== bAssigned) return bAssigned - aAssigned
       return (PRIORITY_ORDER[b.priority] ?? 0) - (PRIORITY_ORDER[a.priority] ?? 0)
     })
+
+    // Inject next queued task at the top if one exists
+    const nextQueued = await fetchNextQueuedTask(storeId, associateId)
+    if (nextQueued && !sorted.find(t => t.id === nextQueued.id)) {
+      sorted.unshift({
+        ...nextQueued,
+        // Mark it as personal so it shows as assigned
+        assigned_to: associateName,
+      })
+    }
 
     // Add synthetic Code Check task to the top of the list if needed
     const hasCodeCheck = await hasExpiringPullEvents(storeId)
@@ -86,7 +98,7 @@ export function useAssociateTasks(
     setTableItems(tableData)
     setInventoryItems(inventoryData)
     setIsLoading(false)
-  }, [storeId, archetype, associateName])
+  }, [storeId, archetype, associateName, associateId])
 
   useEffect(() => {
     fetchAll()
