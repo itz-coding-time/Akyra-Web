@@ -788,6 +788,168 @@ export async function hasExpiringPullEvents(storeId: string): Promise<boolean> {
   return (count ?? 0) > 0
 }
 
+// ── JIT Task Creation ─────────────────────────────────────────────────────
+
+export async function createJitTask(
+  storeId: string,
+  taskName: string,
+  archetype: string,
+  priority: string
+): Promise<Task | null> {
+  const { data, error } = await supabase
+    .from("tasks")
+    .insert({
+      store_id: storeId,
+      task_name: taskName,
+      archetype,
+      priority,
+      is_sticky: false,
+      is_completed: false,
+      is_orphaned: false,
+      pending_verification: false,
+      base_points: 10,
+      is_pull_task: false,
+      is_truck_task: false,
+    })
+    .select()
+    .maybeSingle()
+
+  if (error) {
+    console.error("createJitTask failed:", error.message)
+    return null
+  }
+  return data
+}
+
+// ── Task Queue ────────────────────────────────────────────────────────────
+
+/**
+ * Fetch the next task in an associate's personal queue.
+ * Returns the lowest queue_position task assigned to this associate.
+ */
+export async function fetchNextQueuedTask(
+  storeId: string,
+  associateId: string
+): Promise<Task | null> {
+  const { data, error } = await supabase
+    .from("tasks")
+    .select("*")
+    .eq("store_id", storeId)
+    .eq("assigned_to_associate_id", associateId)
+    .eq("is_completed", false)
+    .eq("pending_verification", false)
+    .not("queue_position", "is", null)
+    .order("queue_position", { ascending: true })
+    .limit(1)
+    .maybeSingle()
+
+  if (error) {
+    console.error("fetchNextQueuedTask failed:", error.message)
+    return null
+  }
+  return data
+}
+
+/**
+ * Assign a task to an associate with a queue position.
+ */
+export async function assignTaskToAssociate(
+  taskId: string,
+  associateId: string,
+  associateName: string,
+  queuePosition: number
+): Promise<boolean> {
+  const { error } = await supabase
+    .from("tasks")
+    .update({
+      assigned_to_associate_id: associateId,
+      assigned_to: associateName,
+      queue_position: queuePosition,
+    })
+    .eq("id", taskId)
+
+  if (error) {
+    console.error("assignTaskToAssociate failed:", error.message)
+    return false
+  }
+  return true
+}
+
+/**
+ * Fetch all queued tasks for an associate (supervisor view).
+ */
+export async function fetchAssociateTaskQueue(
+  storeId: string,
+  associateId: string
+): Promise<Task[]> {
+  const { data, error } = await supabase
+    .from("tasks")
+    .select("*")
+    .eq("store_id", storeId)
+    .eq("assigned_to_associate_id", associateId)
+    .eq("is_completed", false)
+    .not("queue_position", "is", null)
+    .order("queue_position", { ascending: true })
+
+  if (error) {
+    console.error("fetchAssociateTaskQueue failed:", error.message)
+    return []
+  }
+  return data ?? []
+}
+
+/**
+ * Fetch active shifts with their associates' current queued task.
+ * Used for "Who's working with me?" panel.
+ */
+export async function fetchActiveShiftsWithCurrentTask(
+  storeId: string,
+  excludeAssociateId?: string
+): Promise<Array<{
+  associateId: string
+  associateName: string
+  station: string
+  currentTask: string | null
+}>> {
+  const { data: shifts, error } = await supabase
+    .from("active_shifts")
+    .select("associate_id, station, associates(id, name)")
+    .eq("store_id", storeId)
+    .eq("is_active", true)
+    .gt("expires_at", new Date().toISOString())
+
+  if (error || !shifts) return []
+
+  const results = await Promise.all(
+    shifts
+      .filter(s => s.associate_id !== excludeAssociateId)
+      .map(async (shift) => {
+        const assoc = (shift as any).associates
+
+        // Get their next queued task
+        const { data: nextTask } = await supabase
+          .from("tasks")
+          .select("task_name")
+          .eq("store_id", storeId)
+          .eq("assigned_to_associate_id", shift.associate_id)
+          .eq("is_completed", false)
+          .not("queue_position", "is", null)
+          .order("queue_position", { ascending: true })
+          .limit(1)
+          .maybeSingle()
+
+        return {
+          associateId: shift.associate_id,
+          associateName: assoc?.name ?? "Unknown",
+          station: shift.station ?? "Unknown",
+          currentTask: nextTask?.task_name ?? null,
+        }
+      })
+  )
+
+  return results
+}
+
 // ── Schedule ──────────────────────────────────────────────────────────────
 
 export async function fetchScheduleForStore(
