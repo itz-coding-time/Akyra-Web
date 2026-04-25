@@ -1,7 +1,6 @@
 import { useEffect, useState, useCallback } from "react"
 import { supabase } from "../lib/supabase"
 import {
-  fetchAssociatesByStore,
   fetchActiveShiftsForStore,
   expireStaleShifts,
   claimStation,
@@ -19,17 +18,16 @@ const STATION_ORDER = ["MOD", "Kitchen", "POS", "Float"]
 export function useStationBoard(storeId: string | null | undefined) {
   const [associates, setAssociates] = useState<Associate[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [isReassigning, setIsReassigning] = useState<string | null>(null) // associateId being reassigned
+  const [isReassigning, setIsReassigning] = useState<string | null>(null)
 
   const loadAssociates = useCallback(async () => {
     if (!storeId) return
 
-    // Step 1: Expire stale sessions and get expired associate IDs
+    // Step 1: Expire stale sessions
     const expiredCount = await expireStaleShifts(storeId)
 
-    // Step 2: If any expired, get their IDs for orphan recovery
+    // Step 2: Orphan tasks for expired sessions
     if (expiredCount > 0) {
-      // Fetch recently-expired shifts (is_active = false, expired in last hour)
       const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString()
       const { data: expiredShifts } = await supabase
         .from("active_shifts")
@@ -39,21 +37,37 @@ export function useStationBoard(storeId: string | null | undefined) {
         .gte("expires_at", oneHourAgo)
 
       if (expiredShifts && expiredShifts.length > 0) {
-        const expiredIds = expiredShifts.map(s => s.associate_id)
-        await orphanTasksForExpiredSessions(storeId, expiredIds)
+        await orphanTasksForExpiredSessions(
+          storeId,
+          expiredShifts.map(s => s.associate_id)
+        )
       }
     }
 
-    // Step 3: Load fresh associate and shift data
-    const data = await fetchAssociatesByStore(storeId)
+    // Step 3: Load ONLY active shifts — these are people on the floor right now
     const activeShifts = await fetchActiveShiftsForStore(storeId)
-    const activeAssociateIds = new Set(activeShifts.map(s => s.associate_id))
 
-    setAssociates(data.map(a => ({
-      ...a,
-      hasActiveShift: activeAssociateIds.has(a.id),
-    })))
+    // Map active shifts to Associate shape for the board
+    const activeAssociates: Associate[] = activeShifts.map(shift => {
+      const assoc = (shift as any).associates
+      return {
+        id: assoc?.id ?? shift.associate_id,
+        store_id: storeId,
+        name: assoc?.name ?? "Unknown",
+        role: assoc?.role ?? "crew",
+        current_archetype: shift.station ?? assoc?.current_archetype ?? "Float",
+        pin_code: null,
+        scheduled_days: "",
+        default_start_time: "",
+        default_end_time: "",
+        created_at: shift.created_at,
+        profile_id: null,
+        role_rank: assoc?.role_rank ?? 1,
+        hasActiveShift: true,
+      } as any
+    })
 
+    setAssociates(activeAssociates)
     setIsLoading(false)
   }, [storeId])
 
@@ -61,12 +75,22 @@ export function useStationBoard(storeId: string | null | undefined) {
     loadAssociates()
   }, [loadAssociates])
 
-  // Supabase Realtime subscription — updates station board live
+  // Realtime subscription
   useEffect(() => {
     if (!storeId) return
 
     const channel = supabase
       .channel(`station-board-${storeId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "active_shifts",
+          filter: `store_id=eq.${storeId}`,
+        },
+        () => loadAssociates()
+      )
       .on(
         "postgres_changes",
         {
@@ -76,10 +100,10 @@ export function useStationBoard(storeId: string | null | undefined) {
           filter: `store_id=eq.${storeId}`,
         },
         (payload) => {
-          setAssociates((prev) =>
-            prev.map((a) =>
+          setAssociates(prev =>
+            prev.map(a =>
               a.id === payload.new.id
-                ? { ...a, current_archetype: payload.new.current_archetype as string }
+                ? { ...a, current_archetype: payload.new.current_archetype }
                 : a
             )
           )
@@ -87,53 +111,53 @@ export function useStationBoard(storeId: string | null | undefined) {
       )
       .subscribe()
 
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [storeId])
+    return () => { supabase.removeChannel(channel) }
+  }, [storeId, loadAssociates])
 
   async function reassign(associateId: string, newArchetype: string): Promise<void> {
     setIsReassigning(associateId)
 
     // Optimistic update
-    setAssociates((prev) =>
-      prev.map((a) =>
+    setAssociates(prev =>
+      prev.map(a =>
         a.id === associateId ? { ...a, current_archetype: newArchetype } : a
       )
     )
 
     const success = await claimStation(associateId, newArchetype)
     if (!success) {
-      // Revert on failure
       await loadAssociates()
     }
 
     setIsReassigning(null)
   }
 
-  // Group associates by archetype in display order
-  const grouped: StationGroup[] = STATION_ORDER.map((archetype) => ({
-    archetype,
-    associates: associates.filter((a) => a.current_archetype === archetype),
-  })).filter((g) => g.associates.length > 0)
+  // Group by station in display order
+  const grouped: StationGroup[] = STATION_ORDER
+    .map(archetype => ({
+      archetype,
+      associates: associates.filter(a => a.current_archetype === archetype),
+    }))
+    .filter(g => g.associates.length > 0)
 
-  // Also include any archetypes not in STATION_ORDER
+  // Any archetypes not in the standard order
   const otherArchetypes = [
     ...new Set(
       associates
-        .map((a) => a.current_archetype)
-        .filter((arch) => !STATION_ORDER.includes(arch))
+        .map(a => a.current_archetype)
+        .filter(arch => !STATION_ORDER.includes(arch))
     ),
   ]
-  otherArchetypes.forEach((archetype) => {
+  otherArchetypes.forEach(archetype => {
     grouped.push({
       archetype,
-      associates: associates.filter((a) => a.current_archetype === archetype),
+      associates: associates.filter(a => a.current_archetype === archetype),
     })
   })
 
+  // Unclaimed = no archetype set
   const unclaimed = associates.filter(
-    (a) => !a.current_archetype || a.current_archetype === ""
+    a => !a.current_archetype || a.current_archetype === ""
   )
 
   return {
