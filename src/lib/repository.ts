@@ -147,21 +147,53 @@ export async function registerAuthForProfile(
 ): Promise<Profile | null> {
   const syntheticEmail = `${eeid}@akyra.internal`
 
-  // Step 1: Create Supabase Auth user
+  // Step 1: Attempt signup
   const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
     email: syntheticEmail,
     password: pin,
   })
 
-  if (signUpError || !signUpData.user) {
-    console.error("registerAuthForProfile signUp failed:", signUpError?.message)
+  let authUid: string | null = null
+
+  if (signUpError) {
+    if (signUpError.message.includes("User already registered") ||
+        signUpError.message.includes("already registered")) {
+      // User exists from a previous failed attempt
+      // Try signing in with the provided PIN
+      console.log("Auth user already exists, attempting sign-in to link...")
+
+      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+        email: syntheticEmail,
+        password: pin,
+      })
+
+      if (signInError || !signInData.user) {
+        // Wrong PIN from previous attempt — sign in failed
+        // We can't recover without admin access, so report clearly
+        console.error("registerAuthForProfile: user exists but PIN mismatch", signInError?.message)
+        return null
+      }
+
+      authUid = signInData.user.id
+      console.log("Linked existing auth user:", authUid)
+    } else {
+      console.error("registerAuthForProfile signUp failed:", signUpError.message)
+      return null
+    }
+  } else {
+    // Fresh signup succeeded
+    authUid = signUpData.user?.id ?? null
+  }
+
+  if (!authUid) {
+    console.error("registerAuthForProfile: no auth UID after signup/signin")
     return null
   }
 
   // Step 2: Write auth_uid back to the profile
   const { error: updateError } = await supabase
     .from("profiles")
-    .update({ auth_uid: signUpData.user.id })
+    .update({ auth_uid: authUid })
     .eq("eeid", eeid)
 
   if (updateError) {
