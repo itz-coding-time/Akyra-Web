@@ -20,8 +20,9 @@ const ROLE_META: Array<{
   { key: "assistant_manager", rank: 3, defaultLabel: "Assistant Manager", description: "Senior ops — supports the store manager" },
   { key: "store_manager",     rank: 4, defaultLabel: "Store Manager",     description: "Full store ownership — settles disputes, final say" },
   { key: "district_admin",    rank: 5, defaultLabel: "District Admin",    description: "Multi-store visibility across a district" },
-  { key: "org_admin",         rank: 6, defaultLabel: "Org Admin",         description: "Full org access — manages all stores" },
-  { key: "db_admin",          rank: 7, defaultLabel: "Platform Admin",    description: "Akyra platform access — cross-org management" },
+  { key: "regional_admin",    rank: 6, defaultLabel: "Regional Admin",    description: "Multi-district visibility across a region" },
+  { key: "org_admin",         rank: 7, defaultLabel: "Org Admin",         description: "Full org access — manages all stores" },
+  { key: "db_admin",          rank: 8, defaultLabel: "Platform Admin",    description: "Akyra platform access — cross-org management" },
 ]
 
 export function RoleDisplayNameEditor({ orgId, orgName, onDone }: RoleDisplayNameEditorProps) {

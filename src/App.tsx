@@ -18,6 +18,7 @@ import {
   EquipmentIssuesPage,
   StoreManagerPage,
   AssistantManagerPage,
+  RegionalAdminPage,
   DbAdminPanel,
   AuthCallbackPage,
 } from "./pages"
@@ -94,6 +95,17 @@ function RoleRouter() {
         {passkeyPrompt}
         <DashboardLayout>
           <AssistantManagerPage />
+        </DashboardLayout>
+      </>
+    )
+  }
+
+  if (profile.role === "regional_admin") {
+    return (
+      <>
+        {passkeyPrompt}
+        <DashboardLayout>
+          <RegionalAdminPage />
         </DashboardLayout>
       </>
     )
@@ -229,9 +241,19 @@ function App() {
           }
         />
         <Route
+          path="/app/dashboard/regional"
+          element={
+            <ProtectedRoute minRank={6}>
+              <DashboardLayout>
+                <RegionalAdminPage />
+              </DashboardLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/app/admin"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute minRank={8}>
               <DbAdminPanel />
             </ProtectedRoute>
           }

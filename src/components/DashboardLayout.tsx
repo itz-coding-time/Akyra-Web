@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from "react-router-dom"
 import { AkyraLogo } from "./AkyraLogo"
 import { PastDueBanner } from "./PastDueBanner"
 import { useAuth } from "../context"
-import { Users, ClipboardList, Wrench, Settings, LayoutGrid, Upload, Trophy } from "lucide-react"
+import { Users, ClipboardList, Wrench, Settings, LayoutGrid, Upload, Trophy, Globe } from "lucide-react"
 
 interface DashboardLayoutProps {
   children: ReactNode
@@ -18,6 +18,7 @@ const NAV_ITEMS = [
   { to: "/app/dashboard/import", icon: Upload, label: "Import", minRank: 2, maxRank: 99 },
   { to: "/app/dashboard/assistant-manager", icon: ClipboardList, label: "AM View", minRank: 3, maxRank: 3 },
   { to: "/app/dashboard/store-manager", icon: Trophy, label: "Manager", minRank: 4, maxRank: 99 },
+  { to: "/app/dashboard/regional", icon: Globe, label: "Regional", minRank: 6, maxRank: 6 },
 ]
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {

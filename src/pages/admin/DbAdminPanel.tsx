@@ -7,8 +7,11 @@ import {
   createDistrict,
   updateProfileRole,
   getRoleDisplayName,
+  fetchRegionsForOrg,
+  createRegion,
   type OrgSummary,
   type StoreSummary,
+  type RegionSummary,
 } from "../../lib"
 import { NewOrgFlow } from "./NewOrgFlow"
 import { StoreSetupWizard } from "./StoreSetupWizard"
@@ -31,8 +34,9 @@ const ROLE_OPTIONS = [
   { role: "assistant_manager", rank: 3, label: "Assistant Manager" },
   { role: "store_manager",     rank: 4, label: "Store Manager" },
   { role: "district_admin",    rank: 5, label: "District Admin" },
-  { role: "org_admin",         rank: 6, label: "Org Admin" },
-  { role: "db_admin",          rank: 7, label: "DB Admin" },
+  { role: "regional_admin",    rank: 6, label: "Regional Admin" },
+  { role: "org_admin",         rank: 7, label: "Org Admin" },
+  { role: "db_admin",          rank: 8, label: "Platform Admin" },
 ]
 
 interface DistrictSummary {
@@ -70,6 +74,11 @@ export function DbAdminPanel() {
   const [newDistrictName, setNewDistrictName] = useState("")
   const [isCreatingDistrict, setIsCreatingDistrict] = useState(false)
   const [resettingProfile, setResettingProfile] = useState<{ authUid: string; name: string } | null>(null)
+  const [managingRegions, setManagingRegions] = useState<{ id: string; name: string } | null>(null)
+  const [regions, setRegions] = useState<RegionSummary[]>([])
+  const [newRegionName, setNewRegionName] = useState("")
+  const [showAddRegion, setShowAddRegion] = useState(false)
+  const [isCreatingRegion, setIsCreatingRegion] = useState(false)
 
   useEffect(() => {
     setIsLoading(true)
@@ -264,6 +273,16 @@ export function DbAdminPanel() {
                     className="text-[10px] font-mono uppercase tracking-widest text-akyra-secondary hover:text-white border border-akyra-border rounded px-2 py-1 transition-colors"
                   >
                     Roles
+                  </button>
+                  <button
+                    onClick={e => {
+                      e.stopPropagation()
+                      setManagingRegions({ id: org.id, name: org.name })
+                      fetchRegionsForOrg(org.id).then(setRegions)
+                    }}
+                    className="text-[10px] font-mono uppercase tracking-widest text-akyra-secondary hover:text-white border border-akyra-border rounded px-2 py-1 transition-colors"
+                  >
+                    Regions
                   </button>
                   <ChevronRight className="w-4 h-4 text-akyra-secondary" />
                 </div>
@@ -549,6 +568,95 @@ export function DbAdminPanel() {
           onDone={() => setResettingProfile(null)}
           onDismiss={() => setResettingProfile(null)}
         />
+      )}
+      {managingRegions && (
+        <div className="fixed inset-0 z-50 bg-black overflow-y-auto">
+          <div className="max-w-lg mx-auto px-6 py-8 space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-black text-white">Regions</h2>
+                <p className="text-xs font-mono text-akyra-secondary">{managingRegions.name}</p>
+              </div>
+              <button
+                onClick={() => { setManagingRegions(null); setShowAddRegion(false); setNewRegionName("") }}
+                className="text-akyra-secondary hover:text-white transition-colors text-xs font-mono uppercase tracking-widest"
+              >
+                Done
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              {regions.length === 0 && !showAddRegion && (
+                <p className="text-sm text-akyra-secondary">No regions yet.</p>
+              )}
+              {regions.map(region => (
+                <div
+                  key={region.id}
+                  className="bg-akyra-surface border border-akyra-border rounded-xl p-4 flex items-center justify-between"
+                >
+                  <div className="flex items-center gap-3">
+                    <Building2 className="w-4 h-4 text-akyra-secondary" />
+                    <div>
+                      <p className="font-semibold text-white text-sm">{region.name}</p>
+                      <p className="text-xs font-mono text-akyra-secondary">
+                        {region.districtCount} districts · {region.storeCount} stores
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {showAddRegion ? (
+                <div className="bg-akyra-surface border border-white/20 rounded-xl p-4 space-y-3">
+                  <p className="text-xs font-mono uppercase tracking-widest text-akyra-secondary">
+                    New Region
+                  </p>
+                  <input
+                    value={newRegionName}
+                    onChange={e => setNewRegionName(e.target.value)}
+                    placeholder="e.g. Mid-Atlantic"
+                    autoFocus
+                    className="w-full bg-akyra-black border border-akyra-border rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-white"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => { setShowAddRegion(false); setNewRegionName("") }}
+                      className="flex-1 py-2 rounded-lg border border-akyra-border text-akyra-secondary text-sm"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (!newRegionName.trim()) return
+                        setIsCreatingRegion(true)
+                        const id = await createRegion(managingRegions.id, newRegionName.trim())
+                        if (id) {
+                          const updated = await fetchRegionsForOrg(managingRegions.id)
+                          setRegions(updated)
+                          setNewRegionName("")
+                          setShowAddRegion(false)
+                        }
+                        setIsCreatingRegion(false)
+                      }}
+                      disabled={!newRegionName.trim() || isCreatingRegion}
+                      className="flex-1 py-2 rounded-lg bg-white text-black text-sm font-bold disabled:opacity-50"
+                    >
+                      {isCreatingRegion ? "Creating..." : "Create"}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowAddRegion(true)}
+                  className="w-full py-3 rounded-xl border border-dashed border-akyra-border text-akyra-secondary hover:border-white/40 hover:text-white transition-colors flex items-center justify-center gap-2 text-sm"
+                >
+                  <Plus className="w-4 h-4" />
+                  Add Region
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
