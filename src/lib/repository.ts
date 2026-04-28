@@ -1756,6 +1756,171 @@ export async function updateProfileRole(
   return true
 }
 
+// ── Districts ─────────────────────────────────────────────────────────────
+
+export async function fetchDistrictsForOrg(orgId: string): Promise<Array<{
+  id: string
+  name: string
+  orgId: string
+  districtManagerId: string | null
+  storeCount: number
+}>> {
+  const db = supabase as any
+  const { data, error } = await db
+    .from("districts")
+    .select("id, name, org_id, district_manager_id, stores(id)")
+    .eq("org_id", orgId)
+    .order("name")
+
+  if (error || !data) return []
+
+  return (data as any[]).map((d: any) => ({
+    id: d.id,
+    name: d.name,
+    orgId: d.org_id,
+    districtManagerId: d.district_manager_id,
+    storeCount: d.stores?.length ?? 0,
+  }))
+}
+
+export async function createDistrict(
+  orgId: string,
+  name: string
+): Promise<string | null> {
+  const db = supabase as any
+  const { data, error } = await db
+    .from("districts")
+    .insert({ org_id: orgId, name })
+    .select("id")
+    .maybeSingle()
+
+  if (error) {
+    console.error("createDistrict failed:", error.message)
+    return null
+  }
+  return data?.id ?? null
+}
+
+export async function updateDistrict(
+  districtId: string,
+  updates: { name?: string; districtManagerId?: string | null }
+): Promise<boolean> {
+  const update: Record<string, unknown> = {}
+  if (updates.name !== undefined) update.name = updates.name
+  if (updates.districtManagerId !== undefined) update.district_manager_id = updates.districtManagerId
+
+  const db = supabase as any
+  const { error } = await db
+    .from("districts")
+    .update(update)
+    .eq("id", districtId)
+
+  return !error
+}
+
+export async function deleteDistrict(districtId: string): Promise<boolean> {
+  const db = supabase as any
+  const { error } = await db
+    .from("districts")
+    .delete()
+    .eq("id", districtId)
+
+  return !error
+}
+
+export async function assignStoreToDistrict(
+  storeId: string,
+  districtId: string | null
+): Promise<boolean> {
+  const db = supabase as any
+  const { error } = await db
+    .from("stores")
+    .update({ district_id: districtId })
+    .eq("id", storeId)
+
+  return !error
+}
+
+// ── Password Reset ────────────────────────────────────────────────────────
+
+export async function resetAssociatePassword(
+  authUid: string,
+  newPassword: string
+): Promise<boolean> {
+  const { error } = await (supabase.auth as any).admin.updateUserById(authUid, {
+    password: newPassword,
+  })
+
+  if (error) {
+    console.error("resetAssociatePassword failed:", error.message)
+    return false
+  }
+  return true
+}
+
+export function generateTempPassword(): string {
+  const words = ["Shift", "Floor", "Akyra", "Squad", "Store", "Team", "Work"]
+  const word = words[Math.floor(Math.random() * words.length)]
+  const num = Math.floor(Math.random() * 900) + 100
+  return `${word}${num}!`
+}
+
+// ── 30-Day District Associate View ────────────────────────────────────────
+
+export async function fetchDistrictAssociatesLast30Days(
+  storeId: string,
+  _districtId: string
+): Promise<Array<{
+  associateId: string
+  name: string
+  role: string
+  homeStore: string
+  lastVisit: string
+}>> {
+  const thirtyDaysAgo = new Date()
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+  const cutoff = thirtyDaysAgo.toISOString().split("T")[0]
+
+  const db = supabase as any
+  const { data, error } = await db
+    .from("associate_store_visits")
+    .select(`
+      associate_id,
+      visited_at,
+      associates!associate_id(name, role, store_id, stores!store_id(store_number))
+    `)
+    .eq("store_id", storeId)
+    .gte("visited_at", cutoff)
+    .order("visited_at", { ascending: false })
+
+  if (error || !data) return []
+
+  const seen = new Set<string>()
+  const results: Array<{
+    associateId: string
+    name: string
+    role: string
+    homeStore: string
+    lastVisit: string
+  }> = []
+
+  for (const visit of data as any[]) {
+    if (seen.has(visit.associate_id)) continue
+    seen.add(visit.associate_id)
+
+    const assoc = visit.associates
+    results.push({
+      associateId: visit.associate_id,
+      name: assoc?.name ?? "Unknown",
+      role: assoc?.role ?? "crew",
+      homeStore: assoc?.stores?.store_number ?? "?",
+      lastVisit: visit.visited_at,
+    })
+  }
+
+  return results
+}
+
 // ── Org Management ────────────────────────────────────────────────────────
 
 export async function createOrganization(
@@ -3148,5 +3313,172 @@ export async function generateResearchReport(
     taskMetrics,
     inventoryMetrics,
     shiftMetrics,
+  }
+}
+
+// ── Store Manager Analytics ───────────────────────────────────────────────
+
+export async function fetchTopPerformers(
+  storeId: string,
+  days: number = 30
+): Promise<Array<{
+  associateId: string
+  associateName: string
+  avgCompletionPct: number
+  totalShifts: number
+  burnCardsEarned: number
+  squadCardsEarned: number
+  killLeaderCount: number
+  mvpCount: number
+}>> {
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - days)
+  const cutoffStr = cutoff.toISOString().split("T")[0]
+
+  const db = supabase as any
+  const { data, error } = await db
+    .from("shift_results")
+    .select(`
+      associate_id,
+      completion_pct,
+      burn_cards_earned,
+      is_kill_leader,
+      associates!associate_id(name)
+    `)
+    .eq("store_id", storeId)
+    .gte("shift_date", cutoffStr)
+
+  if (error || !data) return []
+
+  const grouped: Record<string, any> = {}
+  for (const r of data as any[]) {
+    const id = r.associate_id
+    if (!grouped[id]) {
+      grouped[id] = {
+        associateId: id,
+        associateName: r.associates?.name ?? "Unknown",
+        totalCompletionPct: 0,
+        totalShifts: 0,
+        burnCardsEarned: 0,
+        squadCardsEarned: 0,
+        killLeaderCount: 0,
+        mvpCount: 0,
+      }
+    }
+    grouped[id].totalCompletionPct += r.completion_pct ?? 0
+    grouped[id].totalShifts++
+    grouped[id].burnCardsEarned += r.burn_cards_earned ?? 0
+    grouped[id].squadCardsEarned += r.squad_cards_earned ?? 0
+    if (r.is_kill_leader) grouped[id].killLeaderCount++
+    if (r.is_mvp) grouped[id].mvpCount++
+  }
+
+  return Object.values(grouped)
+    .map((g: any) => ({
+      ...g,
+      avgCompletionPct: g.totalShifts > 0
+        ? Math.round(g.totalCompletionPct / g.totalShifts)
+        : 0,
+    }))
+    .sort((a, b) => b.avgCompletionPct - a.avgCompletionPct)
+}
+
+export async function fetchAccountabilityFeed(
+  storeId: string,
+  limit: number = 20
+): Promise<Array<{
+  id: string
+  type: "fast" | "slow" | "challenge" | "accepted"
+  taskName: string
+  associateName: string
+  supervisorName: string | null
+  deltaPct: number
+  status: string
+  createdAt: string
+}>> {
+  const db = supabase as any
+  const { data, error } = await db
+    .from("task_verifications")
+    .select(`
+      id,
+      trigger_type,
+      delta_pct,
+      status,
+      created_at,
+      challenge_submitted,
+      tasks!task_id(task_name),
+      associates!associate_id(name),
+      supervisor:associates!supervisor_id(name)
+    `)
+    .eq("store_id", storeId)
+    .order("created_at", { ascending: false })
+    .limit(limit)
+
+  if (error || !data) return []
+
+  return (data as any[]).map(v => ({
+    id: v.id,
+    type: v.challenge_submitted ? "challenge" as const :
+          v.status === "resolved_accepted" ? "accepted" as const :
+          v.trigger_type as "fast" | "slow",
+    taskName: v.tasks?.task_name ?? "Unknown",
+    associateName: v.associates?.name ?? "Unknown",
+    supervisorName: v.supervisor?.name ?? null,
+    deltaPct: v.delta_pct,
+    status: v.status,
+    createdAt: v.created_at,
+  }))
+}
+
+export async function fetchStoreMetrics(
+  storeId: string,
+  days: number = 30
+): Promise<{
+  deadCodes: number
+  wasteQuantity: number
+  totalPulled: number
+  wastePercent: number
+  tasksCompleted: number
+  tasksOrphaned: number
+  hoursInTasks: number
+  hoursOrphaned: number
+}> {
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - days)
+  const cutoffStr = cutoff.toISOString().split("T")[0]
+
+  const [pullData, shiftData] = await Promise.all([
+    supabase
+      .from("pull_events")
+      .select("quantity_pulled, waste_quantity, is_verified")
+      .eq("store_id", storeId)
+      .gte("pulled_date", cutoffStr),
+    supabase
+      .from("shift_results")
+      .select("tasks_completed, tasks_orphaned, tasks_total")
+      .eq("store_id", storeId)
+      .gte("shift_date", cutoffStr),
+  ])
+
+  const pulls = pullData.data ?? []
+  const shifts = shiftData.data ?? []
+
+  const deadCodes = pulls.filter(p => p.waste_quantity && p.waste_quantity > 0).length
+  const wasteQuantity = pulls.reduce((s, p) => s + (p.waste_quantity ?? 0), 0)
+  const totalPulled = pulls.reduce((s, p) => s + p.quantity_pulled, 0)
+  const wastePercent = totalPulled > 0 ? Math.round((wasteQuantity / totalPulled) * 100) : 0
+
+  const tasksCompleted = shifts.reduce((s, r) => s + r.tasks_completed, 0)
+  const tasksOrphaned = shifts.reduce((s, r) => s + (r.tasks_orphaned ?? 0), 0)
+
+  return {
+    deadCodes,
+    wasteQuantity,
+    totalPulled,
+    wastePercent,
+    tasksCompleted,
+    tasksOrphaned,
+    hoursInTasks: Math.round(tasksCompleted * 0.25),
+    hoursOrphaned: Math.round(tasksOrphaned * 0.25),
   }
 }
