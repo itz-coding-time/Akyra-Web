@@ -36,6 +36,7 @@ interface AuthContextValue {
     orgId: string,
     storeId: string
   ) => Promise<SignInResult>
+  resolveSession: () => Promise<void>
   signOut: () => Promise<void>
   dismissPasskeyPrompt: () => void
 }
@@ -237,6 +238,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [resolveSessionState]
   )
 
+  const resolveSession = useCallback(async () => {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session?.user) return
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("auth_uid", session.user.id)
+      .maybeSingle()
+
+    if (profile) {
+      await resolveSessionState(profile)
+    }
+  }, [resolveSessionState])
+
   const dismissPasskeyPrompt = useCallback(() => {
     setState(prev => ({ ...prev, showPasskeyPrompt: false }))
     sessionStorage.setItem("passkey_prompt_dismissed", "true")
@@ -273,6 +289,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signIn,
       completeFirstLogin,
       completeOnboarding,
+      resolveSession,
       signOut,
       dismissPasskeyPrompt,
     }}>

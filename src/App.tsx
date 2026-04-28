@@ -17,6 +17,7 @@ import {
   EquipmentIssuesPage,
   StoreManagerPage,
   DbAdminPanel,
+  AuthCallbackPage,
 } from "./pages"
 import { DashboardLayout, LoadingSpinner, PasskeyPrompt, EntryDisclaimer } from "./components"
 import { AssociateDashboard } from "./pages/associate/AssociateDashboard"
@@ -120,6 +121,7 @@ function App() {
 
         {/* App surface */}
         <Route path="/app/login" element={<LoginPage />} />
+        <Route path="/app/auth/callback" element={<AuthCallbackPage />} />
         <Route path="/app/onboarding" element={<OnboardingPage />} />
         <Route
           path="/app/dashboard"

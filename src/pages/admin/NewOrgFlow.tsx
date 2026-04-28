@@ -44,22 +44,32 @@ export function NewOrgFlow({ onComplete, onCancel }: NewOrgFlowProps) {
     setError(null)
     setIsLoading(true)
 
-    const result = await createOrganization(
-      orgName.trim(),
-      brandName.trim() || orgName.trim(),
-      brandColor,
-      welcomePhrase.trim()
-    )
+    console.log("Creating org:", { orgName, brandName, brandColor, welcomePhrase })
 
-    setIsLoading(false)
+    try {
+      const result = await createOrganization(
+        orgName.trim(),
+        brandName.trim() || orgName.trim(),
+        brandColor,
+        welcomePhrase.trim()
+      )
 
-    if (!result) {
-      setError("Failed to create organization. Check the welcome phrase isn't already taken.")
-      return
+      console.log("createOrganization result:", result)
+
+      if (!result) {
+        setError("Failed to create organization. The welcome phrase may already be taken.")
+        setIsLoading(false)
+        return
+      }
+
+      setCreatedOrgId(result.orgId)
+      setStep("store-details")
+    } catch (err) {
+      console.error("createOrganization threw:", err)
+      setError("An unexpected error occurred. Check the console.")
     }
 
-    setCreatedOrgId(result.orgId)
-    setStep("store-details")
+    setIsLoading(false)
   }
 
   async function handleStoreSubmit(e: FormEvent) {

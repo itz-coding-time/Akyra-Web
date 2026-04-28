@@ -2,13 +2,14 @@ import { useState, type FormEvent } from "react"
 import { useNavigate } from "react-router-dom"
 import { AkyraLogo } from "../components/AkyraLogo"
 import { LoadingSpinner } from "../components/LoadingSpinner"
+import { GoogleSignInButton } from "../components/GoogleSignInButton"
 import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
 import { useAuth } from "../context"
 import { ClaimAccountScreen } from "./ClaimAccountScreen"
-import { isPasskeySupported, signInWithPasskey, hasPasskeyEnrolled } from "../lib"
+import { isPasskeySupported, signInWithPasskey, hasPasskeyEnrolled, hasGoogleLinked } from "../lib"
 
-type LoginStep = "eeid" | "pin" | "passkey"
+type LoginStep = "eeid" | "pin" | "google" | "passkey"
 
 export function LoginPage() {
   const { signIn } = useAuth()
@@ -29,35 +30,39 @@ export function LoginPage() {
 
     const result = await signIn(eeid.trim(), "")
 
-    // Before showing PIN — check if passkey is available
-    if (result.kind === "error" && result.message === "Invalid PIN") {
-      if (isPasskeySupported()) {
-        const enrolled = await hasPasskeyEnrolled()
-        if (enrolled) {
-          setIsLoading(false)
-          setStep("passkey")
-          return
-        }
-      }
-      setIsLoading(false)
-      setStep("pin")
-      return
-    }
-
-    setIsLoading(false)
-
     switch (result.kind) {
       case "new-user":
+        setIsLoading(false)
         navigate(`/app/onboarding?eeid=${encodeURIComponent(eeid.trim())}`)
         break
       case "first-login":
+        setIsLoading(false)
         setClaimingEeid(eeid.trim())
         break
       case "success":
+        setIsLoading(false)
         navigate("/app/dashboard")
         break
-      default:
-        setError(result.message ?? "Something went wrong")
+      default: {
+        // Profile exists with auth — check Google
+        const linked = await hasGoogleLinked(eeid.trim())
+        if (linked) {
+          setIsLoading(false)
+          setStep("google")
+          break
+        }
+        // No Google — check passkey
+        if (isPasskeySupported()) {
+          const enrolled = await hasPasskeyEnrolled()
+          if (enrolled) {
+            setIsLoading(false)
+            setStep("passkey")
+            break
+          }
+        }
+        setIsLoading(false)
+        setStep("pin")
+      }
     }
   }
 
@@ -189,6 +194,63 @@ export function LoginPage() {
               Use PIN instead
             </button>
           </div>
+        )}
+
+        {/* Google Step */}
+        {step === "google" && (
+          eeid === "000001" ? (
+            <div className="space-y-6 text-center">
+              <div>
+                <p className="text-white font-semibold">Admin Access</p>
+                <p className="text-akyra-secondary text-sm mt-1">
+                  Authorized accounts only.
+                </p>
+              </div>
+
+              <GoogleSignInButton
+                eeid="000001"
+                label="Continue with Google"
+              />
+
+              <button
+                onClick={() => { setStep("eeid"); setEeid("") }}
+                className="text-xs font-mono text-akyra-secondary hover:text-white transition-colors"
+              >
+                ← Back
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              <div className="text-center">
+                <p className="text-white font-semibold">Welcome back</p>
+                <p className="text-akyra-secondary text-sm font-mono mt-1">
+                  EEID {eeid}
+                </p>
+              </div>
+
+              <GoogleSignInButton eeid={eeid.trim()} />
+
+              <div className="relative flex items-center gap-3">
+                <div className="flex-1 h-px bg-akyra-border" />
+                <span className="text-[10px] font-mono text-akyra-secondary">or</span>
+                <div className="flex-1 h-px bg-akyra-border" />
+              </div>
+
+              <button
+                onClick={() => setStep("pin")}
+                className="w-full text-xs font-mono text-akyra-secondary hover:text-white transition-colors"
+              >
+                Use PIN instead
+              </button>
+
+              <button
+                onClick={() => { setStep("eeid"); setEeid("") }}
+                className="w-full text-xs font-mono text-akyra-secondary hover:text-white transition-colors"
+              >
+                ← Back
+              </button>
+            </div>
+          )
         )}
 
         {/* PIN Step — returning user */}

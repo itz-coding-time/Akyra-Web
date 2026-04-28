@@ -318,6 +318,93 @@ export async function registerAuthForProfile(
   return fetchProfileByEeid(eeid)
 }
 
+// ── Google Sign In ────────────────────────────────────────────────────────
+
+const DB_ADMIN_WHITELIST = ["therealbrancase@gmail.com"]
+
+/**
+ * Initiate Google OAuth sign in.
+ * Supabase handles the OAuth flow and redirects back to the app.
+ */
+export async function signInWithGoogle(redirectTo: string): Promise<void> {
+  await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo,
+      queryParams: {
+        access_type: "offline",
+        prompt: "consent",
+      },
+    },
+  })
+}
+
+/**
+ * Handle Google OAuth callback.
+ * Called when Supabase redirects back after Google sign in.
+ * Links the Google email to the profile if not already linked.
+ * Enforces db_admin whitelist.
+ */
+export async function handleGoogleCallback(
+  eeid: string
+): Promise<{ kind: "success"; profile: Profile } | { kind: "error"; message: string } | { kind: "not_linked" }> {
+  // Get the current session from Supabase (set by OAuth callback)
+  const { data: { session }, error } = await supabase.auth.getSession()
+
+  if (error || !session) {
+    return { kind: "error", message: "Google sign in failed. Please try again." }
+  }
+
+  const googleEmail = session.user.email ?? ""
+
+  // Fetch the profile by EEID
+  const profile = await fetchProfileByEeid(eeid)
+
+  if (!profile) {
+    // No profile for this EEID — not a registered associate
+    await supabase.auth.signOut()
+    return { kind: "error", message: "No account found for this EEID." }
+  }
+
+  // DB Admin whitelist check
+  if (profile.role === "db_admin" && !DB_ADMIN_WHITELIST.includes(googleEmail)) {
+    await supabase.auth.signOut()
+    return { kind: "error", message: "Link your EEID to continue." }
+  }
+
+  // If profile already has a google_email, verify it matches
+  if ((profile as any).google_email && (profile as any).google_email !== googleEmail) {
+    await supabase.auth.signOut()
+    return { kind: "error", message: "This Google account is not linked to this EEID." }
+  }
+
+  // Link Google email to profile if not already linked
+  if (!(profile as any).google_email) {
+    await supabase
+      .from("profiles")
+      .update({
+        google_email: googleEmail,
+        auth_uid: session.user.id,
+      })
+      .eq("eeid", eeid)
+  }
+
+  return { kind: "success", profile }
+}
+
+/**
+ * Check if a profile has Google Sign In linked.
+ */
+export async function hasGoogleLinked(eeid: string): Promise<boolean> {
+  const { data } = await supabase
+    .from("profiles")
+    .select("google_email")
+    .eq("eeid", eeid)
+    .maybeSingle()
+
+  return !!(data as any)?.google_email
+}
+
 export async function createProfileFromOnboarding(
   eeid: string,
   displayName: string,
@@ -1515,6 +1602,8 @@ export async function createOrganization(
   brandColor: string,
   welcomePhrase: string
 ): Promise<{ orgId: string; licenseId: string } | null> {
+  console.log("[createOrganization] Starting:", { name, brandName, welcomePhrase })
+
   // Step 1: Create org
   const { data: org, error: orgError } = await supabase
     .from("organizations")
@@ -1527,9 +1616,11 @@ export async function createOrganization(
     .maybeSingle()
 
   if (orgError || !org) {
-    console.error("createOrganization failed:", orgError?.message)
+    console.error("[createOrganization] Org insert failed:", orgError?.message)
     return null
   }
+
+  console.log("[createOrganization] Org created:", org.id)
 
   // Step 2: Create license
   const { data: license, error: licenseError } = await supabase
@@ -1543,18 +1634,28 @@ export async function createOrganization(
     .maybeSingle()
 
   if (licenseError || !license) {
-    console.error("createLicense failed:", licenseError?.message)
+    console.error("[createOrganization] License insert failed:", licenseError?.message)
+    // Clean up the org we just created
+    await supabase.from("organizations").delete().eq("id", org.id)
     return null
   }
 
-  // Step 3: Seed default stations (Kitchen, POS, Float, MOD)
-  await supabase.from("org_stations").insert([
+  console.log("[createOrganization] License created:", license.id)
+
+  // Step 3: Seed default stations
+  const { error: stationsError } = await supabase.from("org_stations").insert([
     { org_id: org.id, name: "Kitchen", emoji: "🍳", description: "Kitchen operations",   is_supervisor_only: false, is_float: false, display_order: 1 },
-    { org_id: org.id, name: "POS",     emoji: "🖥️", description: "Front counter",         is_supervisor_only: false, is_float: false, display_order: 2 },
-    { org_id: org.id, name: "Float",   emoji: "⚡", description: "Fill in where needed",  is_supervisor_only: false, is_float: true,  display_order: 3 },
-    { org_id: org.id, name: "MOD",     emoji: "👑", description: "Manager on duty",       is_supervisor_only: true,  is_float: false, display_order: 4 },
+    { org_id: org.id, name: "POS",     emoji: "🖥️", description: "Front counter",       is_supervisor_only: false, is_float: false, display_order: 2 },
+    { org_id: org.id, name: "Float",   emoji: "⚡", description: "Fill in where needed", is_supervisor_only: false, is_float: true,  display_order: 3 },
+    { org_id: org.id, name: "MOD",     emoji: "👑", description: "Manager on duty",      is_supervisor_only: true,  is_float: false, display_order: 4 },
   ])
 
+  if (stationsError) {
+    console.error("[createOrganization] Stations insert failed:", stationsError.message)
+    // Non-fatal — org and license were created successfully
+  }
+
+  console.log("[createOrganization] Complete:", { orgId: org.id, licenseId: license.id })
   return { orgId: org.id, licenseId: license.id }
 }
 

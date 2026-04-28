@@ -400,6 +400,7 @@ export type Database = {
           current_store_id: string | null
           display_name: string
           eeid: string
+          google_email: string | null
           id: string
           lifetime_burn_cards: number | null
           org_id: string | null
@@ -413,6 +414,7 @@ export type Database = {
           current_store_id?: string | null
           display_name?: string
           eeid: string
+          google_email?: string | null
           id: string
           lifetime_burn_cards?: number | null
           org_id?: string | null
@@ -426,6 +428,7 @@ export type Database = {
           current_store_id?: string | null
           display_name?: string
           eeid?: string
+          google_email?: string | null
           id?: string
           lifetime_burn_cards?: number | null
           org_id?: string | null
