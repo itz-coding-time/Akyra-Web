@@ -36,6 +36,93 @@ export async function fetchProfileByEeid(eeid: string): Promise<Profile | null> 
   return data
 }
 
+const WELCOME_CODE_KEY = "akyra_org_code"
+
+/**
+ * Fetch profile by EEID scoped to a specific org via welcome phrase.
+ * Returns null if the EEID doesn't exist in that org.
+ * This prevents cross-org profile discovery.
+ */
+export async function fetchProfileByEeidAndOrg(
+  eeid: string,
+  welcomePhrase: string
+): Promise<Profile | null> {
+  const { data: license, error: licenseError } = await supabase
+    .from("licenses")
+    .select("org_id, status")
+    .eq("welcome_phrase", welcomePhrase)
+    .maybeSingle()
+
+  if (licenseError || !license) {
+    console.log("[Auth] Welcome phrase not found:", welcomePhrase)
+    return null
+  }
+
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("eeid", eeid)
+    .eq("org_id", license.org_id)
+    .maybeSingle()
+
+  if (profileError || !profile) {
+    console.log("[Auth] Profile not found for EEID in org:", eeid, license.org_id)
+    return null
+  }
+
+  return profile
+}
+
+/**
+ * Validate a welcome phrase and return the org info.
+ * Used in step 0 of the login flow.
+ */
+export async function validateWelcomeCode(
+  welcomePhrase: string
+): Promise<{ orgId: string; orgName: string; brandName: string | null } | null> {
+  const { data, error } = await supabase
+    .from("licenses")
+    .select(`
+      org_id,
+      status,
+      organizations!org_id(name, brand_name)
+    `)
+    .eq("welcome_phrase", welcomePhrase)
+    .maybeSingle()
+
+  if (error || !data) return null
+
+  if (data.status === "cancelled") return null
+
+  const org = (data as any).organizations
+  return {
+    orgId: data.org_id,
+    orgName: org?.name ?? "Unknown",
+    brandName: org?.brand_name ?? null,
+  }
+}
+
+/**
+ * Cache welcome code to localStorage.
+ */
+export function cacheWelcomeCode(welcomePhrase: string): void {
+  localStorage.setItem(WELCOME_CODE_KEY, welcomePhrase)
+}
+
+/**
+ * Get cached welcome code from localStorage.
+ */
+export function getCachedWelcomeCode(): string | null {
+  return localStorage.getItem(WELCOME_CODE_KEY)
+}
+
+/**
+ * Clear cached welcome code (org switch or logout).
+ */
+export function clearWelcomeCode(): void {
+  localStorage.removeItem(WELCOME_CODE_KEY)
+}
+
 // ── Licensing ─────────────────────────────────────────────────────────────
 
 export async function fetchLicenseByPhrase(phrase: string): Promise<License | null> {
@@ -250,6 +337,31 @@ export async function signInWithEeidAndPin(
   return null
 }
 
+/**
+ * Sign in with EEID, password, and welcome phrase (org-scoped).
+ * Uses the synthetic email {eeid}.{welcomePhrase}@akyra.internal.
+ */
+export async function signInWithEeidAndOrg(
+  eeid: string,
+  password: string,
+  welcomePhrase: string
+): Promise<Profile | null> {
+  const syntheticEmail = buildSyntheticEmail(eeid, welcomePhrase)
+  console.log("[Auth] Attempting sign in:", syntheticEmail)
+
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: syntheticEmail,
+    password,
+  })
+
+  if (error || !data.user) {
+    console.error("[Auth] Sign in failed:", error?.message)
+    return null
+  }
+
+  return fetchProfileByEeidAndOrg(eeid, welcomePhrase)
+}
+
 export async function registerAuthForProfile(
   eeid: string,
   pin: string
@@ -316,6 +428,56 @@ export async function registerAuthForProfile(
   }
 
   return fetchProfileByEeid(eeid)
+}
+
+/**
+ * Register auth credentials for a pre-seeded profile, org-scoped.
+ * Called from ClaimAccountScreen on first login.
+ */
+export async function registerAuthForOrg(
+  eeid: string,
+  password: string,
+  welcomePhrase: string
+): Promise<Profile | null> {
+  const syntheticEmail = buildSyntheticEmail(eeid, welcomePhrase)
+  console.log("[Auth] Registering:", syntheticEmail)
+
+  const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+    email: syntheticEmail,
+    password,
+  })
+
+  let authUid: string | null = null
+
+  if (signUpError) {
+    if (signUpError.message.includes("already registered")) {
+      // Try signing in — previous incomplete registration
+      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+        email: syntheticEmail,
+        password,
+      })
+      if (signInError || !signInData.user) {
+        console.error("[Auth] Already registered but wrong password")
+        return null
+      }
+      authUid = signInData.user.id
+    } else {
+      console.error("[Auth] Registration failed:", signUpError.message)
+      return null
+    }
+  } else {
+    authUid = signUpData.user?.id ?? null
+  }
+
+  if (!authUid) return null
+
+  // Link auth_uid to profile
+  await supabase
+    .from("profiles")
+    .update({ auth_uid: authUid })
+    .eq("eeid", eeid)
+
+  return fetchProfileByEeidAndOrg(eeid, welcomePhrase)
 }
 
 // ── Google Sign In ────────────────────────────────────────────────────────

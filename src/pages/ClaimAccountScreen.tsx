@@ -3,10 +3,11 @@ import { useNavigate } from "react-router-dom"
 import { AkyraLogo } from "../components/AkyraLogo"
 import { LoadingSpinner } from "../components/LoadingSpinner"
 import { useAuth } from "../context"
-import { fetchProfileByEeid } from "../lib"
+import { fetchProfileByEeidAndOrg, registerAuthForOrg } from "../lib"
 
 interface ClaimAccountScreenProps {
   eeid: string
+  welcomePhrase: string
   onBack: () => void
 }
 
@@ -16,8 +17,8 @@ type ClaimStep =
   | { stage: "set-pin"; displayName: string }
   | { stage: "error"; message: string }
 
-export function ClaimAccountScreen({ eeid, onBack }: ClaimAccountScreenProps) {
-  const { completeFirstLogin } = useAuth()
+export function ClaimAccountScreen({ eeid, welcomePhrase, onBack }: ClaimAccountScreenProps) {
+  const { resolveSession } = useAuth()
   const navigate = useNavigate()
 
   const [step, setStep] = useState<ClaimStep>({ stage: "referencing" })
@@ -27,9 +28,9 @@ export function ClaimAccountScreen({ eeid, onBack }: ClaimAccountScreenProps) {
 
   // Auto-fetch profile on mount
   useState(() => {
-    fetchProfileByEeid(eeid).then(profile => {
+    fetchProfileByEeidAndOrg(eeid, welcomePhrase).then(profile => {
       if (!profile) {
-        setStep({ stage: "error", message: "No profile found for this EEID. Contact your MOD." })
+        setStep({ stage: "error", message: "No profile found for this EEID in your organization." })
         return
       }
       setStep({ stage: "confirm", displayName: profile.display_name })
@@ -42,13 +43,14 @@ export function ClaimAccountScreen({ eeid, onBack }: ClaimAccountScreenProps) {
     setError(null)
     setIsLoading(true)
 
-    const result = await completeFirstLogin(eeid, pin)
+    const profile = await registerAuthForOrg(eeid, pin, welcomePhrase)
     setIsLoading(false)
 
-    if (result.kind === "success") {
+    if (profile) {
+      await resolveSession()
       navigate("/app/dashboard")
     } else {
-      setError(result.kind === "error" ? result.message : "Something went wrong. Try again.")
+      setError("Could not complete setup. Please try again.")
     }
   }
 

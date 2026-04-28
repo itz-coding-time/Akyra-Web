@@ -1,39 +1,57 @@
-import { useEffect, useState } from "react"
+import { useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { handleGoogleCallback } from "../lib"
 import { useAuth } from "../context"
 import { AkyraLogo } from "../components/AkyraLogo"
 import { LoadingSpinner } from "../components/LoadingSpinner"
+import { supabase } from "../lib/supabase"
+
+const DB_ADMIN_EMAIL = "therealbrancase@gmail.com"
 
 export function AuthCallbackPage() {
   const navigate = useNavigate()
   const { resolveSession } = useAuth()
-  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     async function handleCallback() {
-      // Retrieve the EEID that was stored before Google redirect
+      const isDbAdmin = sessionStorage.getItem("dbadmin_flow") === "true"
       const eeid = sessionStorage.getItem("pending_google_eeid")
 
+      sessionStorage.removeItem("dbadmin_flow")
+      sessionStorage.removeItem("pending_google_eeid")
+
+      const { data: { session } } = await supabase.auth.getSession()
+
+      if (!session) {
+        navigate("/")
+        return
+      }
+
+      if (isDbAdmin) {
+        // DB Admin whitelist check — wrong account silently redirects to /
+        if (session.user.email !== DB_ADMIN_EMAIL) {
+          await supabase.auth.signOut()
+          navigate("/")
+          return
+        }
+        // DB Admin authenticated — resolve session and enter dashboard
+        await resolveSession()
+        navigate("/app/dashboard")
+        return
+      }
+
+      // Regular Google auth flow
       if (!eeid) {
-        setError("Session expired. Please try signing in again.")
-        setTimeout(() => navigate("/app/login"), 2000)
+        navigate("/app/login")
         return
       }
 
       const result = await handleGoogleCallback(eeid)
-
-      // Clear the pending EEID
-      sessionStorage.removeItem("pending_google_eeid")
-
       if (result.kind === "success") {
         await resolveSession()
         navigate("/app/dashboard")
-      } else if (result.kind === "not_linked") {
-        navigate(`/app/login?eeid=${eeid}&google=unlinked`)
       } else {
-        setError(result.message)
-        setTimeout(() => navigate("/app/login"), 2500)
+        navigate("/app/login")
       }
     }
 
@@ -43,19 +61,12 @@ export function AuthCallbackPage() {
   return (
     <div className="min-h-screen bg-black flex flex-col items-center justify-center gap-6">
       <AkyraLogo className="w-12 h-12 animate-pulse" />
-      {error ? (
-        <div className="text-center space-y-2">
-          <p className="text-akyra-red text-sm font-mono">{error}</p>
-          <p className="text-white/30 text-xs font-mono">Redirecting...</p>
-        </div>
-      ) : (
-        <div className="flex flex-col items-center gap-3">
-          <LoadingSpinner size="md" />
-          <p className="text-white/40 text-xs font-mono uppercase tracking-widest">
-            Signing in...
-          </p>
-        </div>
-      )}
+      <div className="flex flex-col items-center gap-3">
+        <LoadingSpinner size="md" />
+        <p className="text-white/40 text-xs font-mono uppercase tracking-widest">
+          Signing in...
+        </p>
+      </div>
     </div>
   )
 }

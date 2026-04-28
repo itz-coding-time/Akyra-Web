@@ -8,6 +8,7 @@ import {
   AboutPage,
   PrivacyPage,
   LoginPage,
+  DbAdminLoginPage,
   OnboardingPage,
   OverviewPage,
   AssociatesPage,
@@ -121,6 +122,7 @@ function App() {
 
         {/* App surface */}
         <Route path="/app/login" element={<LoginPage />} />
+        <Route path="/app/login/dbad" element={<DbAdminLoginPage />} />
         <Route path="/app/auth/callback" element={<AuthCallbackPage />} />
         <Route path="/app/onboarding" element={<OnboardingPage />} />
         <Route
