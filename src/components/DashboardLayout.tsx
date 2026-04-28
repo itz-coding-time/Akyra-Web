@@ -9,13 +9,15 @@ interface DashboardLayoutProps {
   children: ReactNode
 }
 
-const navItems = [
-  { to: "/app/dashboard", icon: LayoutGrid, label: "Overview", end: true },
-  { to: "/app/dashboard/associates", icon: Users, label: "Associates" },
-  { to: "/app/dashboard/schedule", icon: ClipboardList, label: "Schedule" },
-  { to: "/app/dashboard/incidents", icon: Wrench, label: "Equipment" },
-  { to: "/app/dashboard/settings", icon: Settings, label: "Settings" },
-  { to: "/app/dashboard/import", icon: Upload, label: "Import" },
+const NAV_ITEMS = [
+  { to: "/app/dashboard", icon: LayoutGrid, label: "Overview", end: true, minRank: 2, maxRank: 99 },
+  { to: "/app/dashboard/associates", icon: Users, label: "Associates", minRank: 2, maxRank: 99 },
+  { to: "/app/dashboard/schedule", icon: ClipboardList, label: "Schedule", minRank: 2, maxRank: 99 },
+  { to: "/app/dashboard/incidents", icon: Wrench, label: "Equipment", minRank: 2, maxRank: 99 },
+  { to: "/app/dashboard/settings", icon: Settings, label: "Settings", minRank: 2, maxRank: 99 },
+  { to: "/app/dashboard/import", icon: Upload, label: "Import", minRank: 2, maxRank: 99 },
+  { to: "/app/dashboard/assistant-manager", icon: ClipboardList, label: "AM View", minRank: 3, maxRank: 3 },
+  { to: "/app/dashboard/store-manager", icon: Trophy, label: "Manager", minRank: 4, maxRank: 99 },
 ]
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {
@@ -78,7 +80,10 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       {/* Bottom navigation */}
       <nav className="fixed bottom-0 inset-x-0 bg-akyra-black border-t border-akyra-border z-50">
         <div className="flex items-center justify-around max-w-2xl mx-auto px-2">
-          {navItems.map(({ to, icon: Icon, label, end }) => (
+          {NAV_ITEMS.filter(i => {
+            const rank = profile?.role_rank ?? 0
+            return rank >= i.minRank && rank <= i.maxRank
+          }).map(({ to, icon: Icon, label, end }) => (
             <NavLink
               key={to}
               to={to}
@@ -104,50 +109,6 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               )}
             </NavLink>
           ))}
-          {(profile?.role_rank ?? 0) >= 3 && (profile?.role_rank ?? 0) < 4 && (
-            <NavLink
-              to="/app/dashboard/assistant-manager"
-              className={({ isActive }) =>
-                `relative flex flex-col items-center gap-1 py-3 px-2 sm:px-4 transition-colors ${
-                  isActive ? "text-white" : "text-akyra-secondary hover:text-white"
-                }`
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  <ClipboardList className={`w-5 h-5 ${isActive ? "stroke-white" : ""}`} />
-                  <span className={`text-[9px] font-mono uppercase tracking-widest ${isActive ? "" : "hidden sm:block"}`}>
-                    AM View
-                  </span>
-                  {isActive && (
-                    <div className="absolute bottom-0 w-6 h-0.5 bg-akyra-red rounded-full" />
-                  )}
-                </>
-              )}
-            </NavLink>
-          )}
-          {(profile?.role_rank ?? 0) >= 4 && (
-            <NavLink
-              to="/app/dashboard/store-manager"
-              className={({ isActive }) =>
-                `relative flex flex-col items-center gap-1 py-3 px-2 sm:px-4 transition-colors ${
-                  isActive ? "text-white" : "text-akyra-secondary hover:text-white"
-                }`
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  <Trophy className={`w-5 h-5 ${isActive ? "stroke-white" : ""}`} />
-                  <span className={`text-[9px] font-mono uppercase tracking-widest ${isActive ? "" : "hidden sm:block"}`}>
-                    Manager
-                  </span>
-                  {isActive && (
-                    <div className="absolute bottom-0 w-6 h-0.5 bg-akyra-red rounded-full" />
-                  )}
-                </>
-              )}
-            </NavLink>
-          )}
         </div>
       </nav>
     </div>

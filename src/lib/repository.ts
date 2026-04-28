@@ -2713,19 +2713,43 @@ export async function calculateAndSaveShiftResults(
 ): Promise<void> {
   if (associateResults.length === 0) return
 
-  // Calculate benchmarks and find kill leader
+  // Fetch assists for each associate this shift
+  const db = supabase as any
+  const { data: assistData } = await db
+    .from("assists")
+    .select("assist_associate_id, original_associate_id")
+    .eq("store_id", storeId)
+    .eq("shift_date", shiftDate)
+    .eq("shift_bucket", shiftBucket)
+
+  const assists = (assistData ?? []) as Array<{
+    assist_associate_id: string
+    original_associate_id: string
+  }>
+
+  // Calculate benchmarks
   const withBenchmarks = associateResults.map(r => {
     const pct = r.tasksTotal > 0 ? r.tasksCompleted / r.tasksTotal : 0
     const benchmark =
       pct >= 0.9 ? "Exceeded" :
       pct >= 0.7 ? "Performed" :
       "Executed"
-    return { ...r, pct, benchmark }
+
+    const assistsGiven = assists.filter(a => a.original_associate_id === r.associateId).length
+    const assistsReceived = assists.filter(a => a.assist_associate_id === r.associateId).length
+
+    return { ...r, pct, benchmark, assistsGiven, assistsReceived }
   })
 
   // Kill leader = highest completion pct
-  const sorted = [...withBenchmarks].sort((a, b) => b.pct - a.pct)
-  const killLeaderId = sorted[0]?.associateId ?? null
+  const sortedByCompletion = [...withBenchmarks].sort((a, b) => b.pct - a.pct)
+  const killLeaderId = sortedByCompletion[0]?.associateId ?? null
+
+  // MVP = most assists given
+  const sortedByAssists = [...withBenchmarks].sort((a, b) => b.assistsGiven - a.assistsGiven)
+  const mvpId = (sortedByAssists[0]?.assistsGiven ?? 0) > 0
+    ? sortedByAssists[0]?.associateId ?? null
+    : null
 
   // Upsert shift results
   const rows = withBenchmarks.map(r => ({
@@ -2738,35 +2762,111 @@ export async function calculateAndSaveShiftResults(
     tasks_total: r.tasksTotal,
     benchmark: r.benchmark,
     burn_cards_earned: r.associateId === killLeaderId ? 1 : 0,
+    squad_cards_earned: r.associateId === mvpId && mvpId !== killLeaderId ? 1 : 0,
     is_kill_leader: r.associateId === killLeaderId,
+    is_mvp: r.associateId === mvpId,
+    assists_given: r.assistsGiven,
+    assists_received: r.assistsReceived,
   }))
 
-  await supabase.from("shift_results").upsert(rows, {
+  await db.from("shift_results").upsert(rows, {
     onConflict: "store_id,shift_bucket,shift_date,associate_id",
   })
 
   // Award burn card to kill leader
   if (killLeaderId) {
-    const { error: rpcError } = await supabase.rpc("increment_burn_cards", { associate_id: killLeaderId })
-    if (rpcError) {
-      // Fallback if RPC doesn't exist yet
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("burn_cards, lifetime_burn_cards")
-        .eq("id", killLeaderId)
-        .maybeSingle()
+    const { data: klProfile } = await supabase
+      .from("profiles")
+      .select("burn_cards, lifetime_burn_cards")
+      .eq("id", killLeaderId)
+      .maybeSingle()
 
-      if (profile) {
-        await supabase
-          .from("profiles")
-          .update({
-            burn_cards: (profile.burn_cards ?? 0) + 1,
-            lifetime_burn_cards: (profile.lifetime_burn_cards ?? 0) + 1,
-          })
-          .eq("id", killLeaderId)
-      }
+    if (klProfile) {
+      await supabase.from("profiles").update({
+        burn_cards: (klProfile.burn_cards ?? 0) + 1,
+        lifetime_burn_cards: (klProfile.lifetime_burn_cards ?? 0) + 1,
+      }).eq("id", killLeaderId)
     }
   }
+
+  // Award squad card to MVP (only if different from kill leader)
+  if (mvpId && mvpId !== killLeaderId) {
+    const { data: mvpProfile } = await (supabase as any)
+      .from("profiles")
+      .select("squad_cards, lifetime_squad_cards")
+      .eq("id", mvpId)
+      .maybeSingle()
+
+    if (mvpProfile) {
+      await (supabase as any).from("profiles").update({
+        squad_cards: (mvpProfile.squad_cards ?? 0) + 1,
+        lifetime_squad_cards: (mvpProfile.lifetime_squad_cards ?? 0) + 1,
+      }).eq("id", mvpId)
+    }
+  }
+}
+
+/**
+ * Get combined spendable cards (burn + squad) for an associate.
+ */
+export async function getAssociateSpendableCards(profileId: string): Promise<{
+  burnCards: number
+  squadCards: number
+  total: number
+}> {
+  const { data } = await (supabase as any)
+    .from("profiles")
+    .select("burn_cards, squad_cards")
+    .eq("id", profileId)
+    .maybeSingle()
+
+  const burnCards = (data as any)?.burn_cards ?? 0
+  const squadCards = (data as any)?.squad_cards ?? 0
+
+  return { burnCards, squadCards, total: burnCards + squadCards }
+}
+
+/**
+ * Spend a card (burn or squad — same mechanic).
+ * Deducts from burn cards first, then squad cards.
+ */
+export async function spendCard(
+  profileId: string,
+  taskId: string,
+  supervisorAssociateId: string,
+  supervisorName: string
+): Promise<boolean> {
+  const cards = await getAssociateSpendableCards(profileId)
+  if (cards.total <= 0) return false
+
+  // Assign task to supervisor
+  const success = await assignTaskToAssociate(
+    taskId,
+    supervisorAssociateId,
+    supervisorName,
+    1
+  )
+  if (!success) return false
+
+  // Deduct from burn first, then squad
+  const { data } = await (supabase as any)
+    .from("profiles")
+    .select("burn_cards, squad_cards")
+    .eq("id", profileId)
+    .maybeSingle()
+
+  if (!data) return false
+
+  const profile = data as any
+  const update: Record<string, number> = {}
+  if ((profile.burn_cards ?? 0) > 0) {
+    update.burn_cards = (profile.burn_cards ?? 0) - 1
+  } else {
+    update.squad_cards = (profile.squad_cards ?? 0) - 1
+  }
+
+  await (supabase as any).from("profiles").update(update).eq("id", profileId)
+  return true
 }
 
 export async function fetchShiftResults(
@@ -3609,4 +3709,61 @@ export async function acceptTaskOffer(
   })
 
   return true
+}
+
+// ── Supervisor Personal Metrics ───────────────────────────────────────────
+
+export async function fetchSupervisorPersonalMetrics(
+  storeId: string,
+  _supervisorName: string,
+  days: number = 7
+): Promise<{
+  shiftsWorked: number
+  avgCompletionPct: number
+  tasksCompleted: number
+  tasksOrphaned: number
+  hoursInTasks: number
+  hoursOrphaned: number
+  deadCodesTonight: number
+  killLeaderCount: number
+}> {
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - days)
+  const cutoffStr = cutoff.toISOString().split("T")[0]
+  const today = new Date().toISOString().split("T")[0]
+
+  const [shiftData, codeData] = await Promise.all([
+    supabase
+      .from("shift_results")
+      .select("completion_pct, tasks_completed, tasks_orphaned, is_kill_leader")
+      .eq("store_id", storeId)
+      .gte("shift_date", cutoffStr),
+    supabase
+      .from("pull_events")
+      .select("id")
+      .eq("store_id", storeId)
+      .lte("expires_date", today)
+      .eq("is_verified", false),
+  ])
+
+  const shifts = shiftData.data ?? []
+  const deadCodes = codeData.data?.length ?? 0
+
+  const avgCompletion = shifts.length > 0
+    ? Math.round(shifts.reduce((s, r) => s + (r.completion_pct ?? 0), 0) / shifts.length)
+    : 0
+
+  const tasksCompleted = shifts.reduce((s, r) => s + r.tasks_completed, 0)
+  const tasksOrphaned = shifts.reduce((s, r) => s + (r.tasks_orphaned ?? 0), 0)
+
+  return {
+    shiftsWorked: shifts.length,
+    avgCompletionPct: avgCompletion,
+    tasksCompleted,
+    tasksOrphaned,
+    hoursInTasks: Math.round(tasksCompleted * 0.25),
+    hoursOrphaned: Math.round(tasksOrphaned * 0.25),
+    deadCodesTonight: deadCodes,
+    killLeaderCount: shifts.filter(r => r.is_kill_leader).length,
+  }
 }

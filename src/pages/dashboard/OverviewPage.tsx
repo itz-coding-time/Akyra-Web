@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { ChevronDown, ChevronUp } from "lucide-react"
 import { useAuth } from "../../context"
 import { useAssociates, useStationBoard, usePacingBoard, useCodeCheck, useSupervisorTasks } from "../../hooks"
@@ -12,6 +12,7 @@ import { AssignTaskSheet } from "../../components/AssignTaskSheet"
 import { CreateTaskFAB } from "../../components/CreateTaskFAB"
 import { AssistancePanel } from "../../components/gamification/AssistancePanel"
 import { SupervisorPingPanel } from "../../components/SupervisorPingPanel"
+import { fetchSupervisorPersonalMetrics } from "../../lib"
 import type { Database } from "../../types/database.types"
 
 type Task = Database["public"]["Tables"]["tasks"]["Row"]
@@ -43,6 +44,13 @@ export function OverviewPage() {
 
   const [myTasksOpen, setMyTasksOpen] = useState(true)
   const [assigningTask, setAssigningTask] = useState<Task | null>(null)
+  const [supervisorMetrics, setSupervisorMetrics] = useState<any>(null)
+  const [metricsOpen, setMetricsOpen] = useState(false)
+
+  useEffect(() => {
+    if (!storeId || !profile?.display_name) return
+    fetchSupervisorPersonalMetrics(storeId, profile.display_name).then(setSupervisorMetrics)
+  }, [storeId, profile?.display_name])
 
   return (
     <div className="space-y-8 pb-32">
@@ -192,6 +200,64 @@ export function OverviewPage() {
         isReassigning={isReassigning}
         onReassign={reassign}
       />
+
+      {/* Supervisor Personal Metrics */}
+      {supervisorMetrics && (
+        <div>
+          <button
+            onClick={() => setMetricsOpen(!metricsOpen)}
+            className="flex items-center justify-between w-full mb-3"
+          >
+            <div className="flex items-center gap-2">
+              <p className="text-xs font-mono uppercase tracking-widest text-akyra-secondary">
+                My Metrics
+              </p>
+              {supervisorMetrics.deadCodesTonight > 0 && (
+                <span className="text-[9px] font-mono bg-akyra-red/20 text-akyra-red px-1.5 py-0.5 rounded-full">
+                  {supervisorMetrics.deadCodesTonight} dead codes
+                </span>
+              )}
+            </div>
+            {metricsOpen
+              ? <ChevronUp className="w-4 h-4 text-akyra-secondary" />
+              : <ChevronDown className="w-4 h-4 text-akyra-secondary" />
+            }
+          </button>
+
+          {metricsOpen && (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-akyra-surface border border-akyra-border rounded-xl p-3">
+                <p className="text-[10px] font-mono text-akyra-secondary uppercase tracking-widest mb-1">
+                  Hours Saved
+                </p>
+                <p className="text-2xl font-black text-white">{supervisorMetrics.hoursInTasks}h</p>
+                <p className="text-xs text-akyra-secondary">{supervisorMetrics.tasksCompleted} tasks</p>
+              </div>
+              <div className="bg-akyra-surface border border-akyra-border rounded-xl p-3">
+                <p className="text-[10px] font-mono text-akyra-secondary uppercase tracking-widest mb-1">
+                  Hours Bled
+                </p>
+                <p className="text-2xl font-black text-akyra-red">{supervisorMetrics.hoursOrphaned}h</p>
+                <p className="text-xs text-akyra-secondary">{supervisorMetrics.tasksOrphaned} orphaned</p>
+              </div>
+              <div className="bg-akyra-surface border border-akyra-border rounded-xl p-3">
+                <p className="text-[10px] font-mono text-akyra-secondary uppercase tracking-widest mb-1">
+                  Avg Completion
+                </p>
+                <p className="text-2xl font-black text-white">{supervisorMetrics.avgCompletionPct}%</p>
+                <p className="text-xs text-akyra-secondary">{supervisorMetrics.shiftsWorked} shifts</p>
+              </div>
+              <div className="bg-akyra-surface border border-akyra-border rounded-xl p-3">
+                <p className="text-[10px] font-mono text-akyra-secondary uppercase tracking-widest mb-1">
+                  Kill Leader
+                </p>
+                <p className="text-2xl font-black text-yellow-400">×{supervisorMetrics.killLeaderCount}</p>
+                <p className="text-xs text-akyra-secondary">last 7 days</p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Assign Task Sheet */}
       {assigningTask && (

@@ -24,7 +24,7 @@ import {
 import { DashboardLayout, LoadingSpinner, PasskeyPrompt, EntryDisclaimer } from "./components"
 import { AssociateDashboard } from "./pages/associate/AssociateDashboard"
 
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
+function ProtectedRoute({ children, minRank = 1 }: { children: React.ReactNode; minRank?: number }) {
   const { state } = useAuth()
 
   if (state.status === "idle" || state.status === "loading") {
@@ -37,6 +37,10 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
   if (state.status === "signed-out" || state.status === "error") {
     return <Navigate to="/app/login" replace />
+  }
+
+  if (minRank > 1 && (state.profile?.role_rank ?? 0) < minRank) {
+    return <Navigate to="/app/dashboard" replace />
   }
 
   return <>{children}</>
@@ -60,9 +64,7 @@ function RoleRouter() {
     return <>{passkeyPrompt}<DbAdminPanel /></>
   }
 
-  const isCrewOnly = profile.role === "crew"
-
-  if (isCrewOnly) {
+  if (profile.role === "crew") {
     return (
       <>
         {passkeyPrompt}
@@ -86,7 +88,29 @@ function RoleRouter() {
     )
   }
 
-  // Supervisor — existing dashboard
+  if (profile.role === "assistant_manager") {
+    return (
+      <>
+        {passkeyPrompt}
+        <DashboardLayout>
+          <AssistantManagerPage />
+        </DashboardLayout>
+      </>
+    )
+  }
+
+  if (profile.role === "store_manager") {
+    return (
+      <>
+        {passkeyPrompt}
+        <DashboardLayout>
+          <StoreManagerPage />
+        </DashboardLayout>
+      </>
+    )
+  }
+
+  // Supervisor and above — existing dashboard
   return (
     <>
       {passkeyPrompt}
@@ -187,7 +211,7 @@ function App() {
         <Route
           path="/app/dashboard/store-manager"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute minRank={4}>
               <DashboardLayout>
                 <StoreManagerPage />
               </DashboardLayout>
@@ -197,7 +221,7 @@ function App() {
         <Route
           path="/app/dashboard/assistant-manager"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute minRank={3}>
               <DashboardLayout>
                 <AssistantManagerPage />
               </DashboardLayout>

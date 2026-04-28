@@ -2,7 +2,7 @@ import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAssociateTasks, useEquipmentIssues, useCodeCheck } from "../../hooks"
 import { useAuth } from "../../context"
-import { createAssistanceRequest, submitAssociatePhoto, logSlowCompletionReason, getAssociateBurnCards, useBurnCard } from "../../lib"
+import { createAssistanceRequest, submitAssociatePhoto, logSlowCompletionReason, getAssociateSpendableCards, spendCard } from "../../lib"
 import { TaskCard } from "../../components/TaskCard"
 import { FlipChecklist } from "../../components/FlipChecklist"
 import { PullList } from "../../components/PullList"
@@ -97,13 +97,13 @@ export function AssociateTaskView({
     position: { x: number; y: number }
   } | null>(null)
   const [sopTask, setSopTask] = useState<Task | null>(null)
-  const [burnCards, setBurnCards] = useState(0)
+  const [cards, setCards] = useState({ burnCards: 0, squadCards: 0, total: 0 })
   const [burnCardTask, setBurnCardTask] = useState<{ taskId: string; taskName: string } | null>(null)
   const [offeringTask, setOfferingTask] = useState<{ taskId: string; taskName: string } | null>(null)
 
   useEffect(() => {
     if (associate.profile_id) {
-      getAssociateBurnCards(associate.profile_id).then(setBurnCards)
+      getAssociateSpendableCards(associate.profile_id).then(setCards)
     }
   }, [associate.profile_id])
 
@@ -139,7 +139,7 @@ export function AssociateTaskView({
         console.log("Report issue for task", taskId)
         break
       case "up-left":
-        if (burnCards > 0) {
+        if (cards.total > 0) {
           const burnTask = [...myTasks, ...archetypeTasks].find(t => t.id === taskId)
           if (burnTask) setBurnCardTask({ taskId, taskName: burnTask.task_name })
         }
@@ -389,7 +389,7 @@ export function AssociateTaskView({
         <RadialMenu
           taskName={radialMenu.taskName}
           position={radialMenu.position}
-          hasBurnCard={burnCards > 0}
+          hasBurnCard={cards.total > 0}
           onSelect={(direction) => {
             handleRadialAction(direction, radialMenu.taskId)
             setRadialMenu(null)
@@ -464,18 +464,23 @@ export function AssociateTaskView({
       {burnCardTask && (
         <BurnCardModal
           taskName={burnCardTask.taskName}
-          burnCardsRemaining={burnCards}
+          burnCards={cards.burnCards}
+          squadCards={cards.squadCards}
+          totalCards={cards.total}
           onConfirm={async () => {
-            // Get supervisor from active shifts
-            // For now use first MOD on shift — GX3 has active shifts data
-            const success = await useBurnCard(
+            const success = await spendCard(
               associate.profile_id ?? "",
               burnCardTask.taskId,
-              "supervisor-id-placeholder", // TODO: resolve real supervisor ID
+              "supervisor-id-placeholder",
               "Your MOD"
             )
             if (success) {
-              setBurnCards(prev => prev - 1)
+              setCards(prev => ({
+                ...prev,
+                total: prev.total - 1,
+                burnCards: prev.burnCards > 0 ? prev.burnCards - 1 : prev.burnCards,
+                squadCards: prev.burnCards > 0 ? prev.squadCards : prev.squadCards - 1,
+              }))
               refetch()
             }
           }}
