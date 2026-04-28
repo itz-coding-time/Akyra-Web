@@ -49,7 +49,7 @@ export function OnboardingPage() {
     },
     pin: {
       heading: "One final step.",
-      sub: "Set your PIN. You'll use this to sign in from now on.",
+      sub: "Set your password. You'll use this to sign in from now on.",
     },
   }
 
@@ -109,7 +109,7 @@ export function OnboardingPage() {
 
   async function handlePinSubmit(e: FormEvent) {
     e.preventDefault()
-    if (pin.length < 6 || !resolvedLicense || !resolvedStore) return
+    if (pin.length < 8 || !resolvedLicense || !resolvedStore) return
     setError(null)
     setIsLoading(true)
 
@@ -222,10 +222,9 @@ export function OnboardingPage() {
           {step === "pin" && (
             <Input
               type="password"
-              inputMode="numeric"
-              placeholder="Choose a 6-digit PIN"
+              placeholder="At least 8 characters"
               value={pin}
-              onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              onChange={(e) => setPin(e.target.value)}
               className="font-mono text-lg text-center tracking-widest bg-akyra-surface border-akyra-border focus:border-white"
               autoFocus
               disabled={isLoading}
@@ -239,7 +238,7 @@ export function OnboardingPage() {
           <Button
             type="submit"
             className="w-full"
-            disabled={isLoading || (step === "pin" && pin.length < 6)}
+            disabled={isLoading || (step === "pin" && pin.length < 8)}
           >
             {isLoading ? <LoadingSpinner size="sm" /> : step === "pin" ? "Create Account" : "Continue →"}
           </Button>

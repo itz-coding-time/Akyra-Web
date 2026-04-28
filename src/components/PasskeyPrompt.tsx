@@ -50,7 +50,7 @@ export function PasskeyPrompt({ displayName, onDismiss }: PasskeyPromptProps) {
         </div>
 
         <p className="text-sm text-akyra-secondary leading-relaxed">
-          Skip the PIN on your next login. Your biometric stays on your device — Akyra never sees it.
+          Skip the password on your next login. Your biometric stays on your device — Akyra never sees it.
         </p>
 
         {result === "success" ? (

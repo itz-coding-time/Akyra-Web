@@ -38,7 +38,7 @@ export function ClaimAccountScreen({ eeid, onBack }: ClaimAccountScreenProps) {
 
   async function handlePinSubmit(e: FormEvent) {
     e.preventDefault()
-    if (pin.length < 4) return
+    if (pin.length < 8) return
     setError(null)
     setIsLoading(true)
 
@@ -112,7 +112,7 @@ export function ClaimAccountScreen({ eeid, onBack }: ClaimAccountScreenProps) {
           </div>
         )}
 
-        {/* Set PIN */}
+        {/* Set password */}
         {step.stage === "set-pin" && (
           <form onSubmit={handlePinSubmit} className="space-y-6">
             <div className="text-center">
@@ -120,24 +120,28 @@ export function ClaimAccountScreen({ eeid, onBack }: ClaimAccountScreenProps) {
                 Hey, {step.displayName.split(" ")[0]}.
               </p>
               <p className="text-akyra-secondary text-sm mt-2">
-                Set your PIN to get started.
+                Set your password to get started.
               </p>
             </div>
 
             <div>
               <label className="text-xs font-mono uppercase tracking-widest text-akyra-secondary mb-2 block">
-                Choose a PIN
+                Choose a password
               </label>
               <input
                 type="password"
-                inputMode="numeric"
-                placeholder="4–6 digits"
+                placeholder="Choose a strong password"
                 value={pin}
-                onChange={e => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                onChange={e => setPin(e.target.value)}
                 className="w-full text-center bg-akyra-surface border border-akyra-border rounded-xl py-4 text-white font-mono text-2xl tracking-widest focus:outline-none focus:border-white"
                 autoFocus
                 disabled={isLoading}
               />
+              {pin.length > 0 && pin.length < 8 && (
+                <p className="text-xs font-mono text-akyra-secondary mt-1">
+                  Password must be at least 8 characters
+                </p>
+              )}
             </div>
 
             {error && (
@@ -146,7 +150,7 @@ export function ClaimAccountScreen({ eeid, onBack }: ClaimAccountScreenProps) {
 
             <button
               type="submit"
-              disabled={pin.length < 4 || isLoading}
+              disabled={pin.length < 8 || isLoading}
               className="w-full py-3 rounded-xl bg-white text-black font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {isLoading ? (

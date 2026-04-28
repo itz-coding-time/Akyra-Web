@@ -44,6 +44,12 @@ export function LoginPage() {
         navigate("/app/dashboard")
         break
       default: {
+        // DB Admin always routes to Google
+        if (eeid.trim() === "000001") {
+          setIsLoading(false)
+          setStep("google")
+          break
+        }
         // Profile exists with auth — check Google
         const linked = await hasGoogleLinked(eeid.trim())
         if (linked) {
@@ -191,7 +197,7 @@ export function LoginPage() {
               onClick={() => { setStep("pin"); setError(null) }}
               className="text-xs font-mono text-akyra-secondary hover:text-white transition-colors"
             >
-              Use PIN instead
+              Use password instead
             </button>
           </div>
         )}
@@ -240,7 +246,7 @@ export function LoginPage() {
                 onClick={() => setStep("pin")}
                 className="w-full text-xs font-mono text-akyra-secondary hover:text-white transition-colors"
               >
-                Use PIN instead
+                Use password instead
               </button>
 
               <button
@@ -253,7 +259,7 @@ export function LoginPage() {
           )
         )}
 
-        {/* PIN Step — returning user */}
+        {/* Password Step — returning user */}
         {step === "pin" && (
           <form onSubmit={handlePinSubmit} className="space-y-4">
             <div className="text-center mb-6">
@@ -267,14 +273,13 @@ export function LoginPage() {
 
             <div>
               <label className="text-xs font-mono uppercase tracking-widest text-akyra-secondary mb-2 block">
-                PIN
+                Password
               </label>
               <Input
                 type="password"
-                inputMode="numeric"
-                placeholder="••••"
+                placeholder="Enter your password"
                 value={pin}
-                onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                onChange={(e) => setPin(e.target.value)}
                 className="font-mono text-lg text-center tracking-widest bg-akyra-surface border-akyra-border focus:border-white"
                 autoFocus
                 disabled={isLoading}

@@ -160,8 +160,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const signedIn = await signInWithEeidAndPin(eeid, pin)
       if (!signedIn) {
-        setState((s) => ({ ...s, status: "signed-out", error: "Invalid PIN" }))
-        return { kind: "error", message: "Invalid PIN" }
+        setState((s) => ({ ...s, status: "signed-out", error: "Invalid password" }))
+        return { kind: "error", message: "Invalid password" }
       }
 
       await resolveSessionState(signedIn)
