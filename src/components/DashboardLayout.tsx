@@ -104,6 +104,28 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               )}
             </NavLink>
           ))}
+          {(profile?.role_rank ?? 0) >= 3 && (profile?.role_rank ?? 0) < 4 && (
+            <NavLink
+              to="/app/dashboard/assistant-manager"
+              className={({ isActive }) =>
+                `relative flex flex-col items-center gap-1 py-3 px-2 sm:px-4 transition-colors ${
+                  isActive ? "text-white" : "text-akyra-secondary hover:text-white"
+                }`
+              }
+            >
+              {({ isActive }) => (
+                <>
+                  <ClipboardList className={`w-5 h-5 ${isActive ? "stroke-white" : ""}`} />
+                  <span className={`text-[9px] font-mono uppercase tracking-widest ${isActive ? "" : "hidden sm:block"}`}>
+                    AM View
+                  </span>
+                  {isActive && (
+                    <div className="absolute bottom-0 w-6 h-0.5 bg-akyra-red rounded-full" />
+                  )}
+                </>
+              )}
+            </NavLink>
+          )}
           {(profile?.role_rank ?? 0) >= 4 && (
             <NavLink
               to="/app/dashboard/store-manager"

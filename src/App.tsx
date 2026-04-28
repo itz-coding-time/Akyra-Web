@@ -17,6 +17,7 @@ import {
   ImportPage,
   EquipmentIssuesPage,
   StoreManagerPage,
+  AssistantManagerPage,
   DbAdminPanel,
   AuthCallbackPage,
 } from "./pages"
@@ -189,6 +190,16 @@ function App() {
             <ProtectedRoute>
               <DashboardLayout>
                 <StoreManagerPage />
+              </DashboardLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/app/dashboard/assistant-manager"
+          element={
+            <ProtectedRoute>
+              <DashboardLayout>
+                <AssistantManagerPage />
               </DashboardLayout>
             </ProtectedRoute>
           }
