@@ -11,12 +11,13 @@ import { CodeCheckPanel } from "../../components/CodeCheckPanel"
 import { AssignTaskSheet } from "../../components/AssignTaskSheet"
 import { CreateTaskFAB } from "../../components/CreateTaskFAB"
 import { AssistancePanel } from "../../components/gamification/AssistancePanel"
+import { SupervisorPingPanel } from "../../components/SupervisorPingPanel"
 import type { Database } from "../../types/database.types"
 
 type Task = Database["public"]["Tables"]["tasks"]["Row"]
 
 export function OverviewPage() {
-  const { state } = useAuth()
+  const { state, orgStations } = useAuth()
   const profile = state.profile
   const storeId = profile?.current_store_id
 
@@ -61,14 +62,28 @@ export function OverviewPage() {
           </p>
         </div>
 
-        {storeId && (
-          <ShiftResetButton
-            storeId={storeId}
-            onComplete={() => {
-              window.location.reload()
-            }}
-          />
-        )}
+        <div className="flex items-center gap-2">
+          {storeId && supervisorAssociateId && (
+            <SupervisorPingPanel
+              storeId={storeId}
+              supervisorAssociateId={supervisorAssociateId}
+              activeAssociates={(grouped as any[]).flatMap(g => g.associates ?? []).map((a: any) => ({
+                id: a.id,
+                name: a.name,
+                station: a.current_archetype,
+              }))}
+              orgStations={orgStations.map(s => s.name)}
+            />
+          )}
+          {storeId && (
+            <ShiftResetButton
+              storeId={storeId}
+              onComplete={() => {
+                window.location.reload()
+              }}
+            />
+          )}
+        </div>
       </div>
 
       {/* Stats */}

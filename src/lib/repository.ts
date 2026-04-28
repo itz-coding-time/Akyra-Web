@@ -3482,3 +3482,131 @@ export async function fetchStoreMetrics(
     hoursOrphaned: Math.round(tasksOrphaned * 0.25),
   }
 }
+
+// ── Ping System ───────────────────────────────────────────────────────────
+
+export async function sendPing(
+  storeId: string,
+  fromAssociateId: string,
+  message: string,
+  pingType: "task_offer" | "general" | "all_hands" | "direct",
+  options?: {
+    toAssociateId?: string
+    targetArchetype?: string
+    taskId?: string
+  }
+): Promise<string | null> {
+  const db = supabase as any
+  const { data, error } = await db
+    .from("pings")
+    .insert({
+      store_id: storeId,
+      from_associate_id: fromAssociateId,
+      to_associate_id: options?.toAssociateId ?? null,
+      target_archetype: options?.targetArchetype ?? null,
+      task_id: options?.taskId ?? null,
+      message,
+      ping_type: pingType,
+    })
+    .select("id")
+    .maybeSingle()
+
+  if (error) {
+    console.error("sendPing failed:", error.message)
+    return null
+  }
+  return data?.id ?? null
+}
+
+export async function fetchActivePingsForAssociate(
+  storeId: string,
+  associateId: string,
+  archetype: string
+): Promise<Array<{
+  id: string
+  message: string
+  pingType: string
+  taskId: string | null
+  fromAssociateId: string
+  fromName: string
+  createdAt: string
+}>> {
+  const db = supabase as any
+  const { data, error } = await db
+    .from("pings")
+    .select(`
+      id, message, ping_type, task_id, from_associate_id, created_at,
+      associates!from_associate_id(name)
+    `)
+    .eq("store_id", storeId)
+    .eq("is_acknowledged", false)
+    .or(`to_associate_id.eq.${associateId},target_archetype.eq.${archetype},ping_type.eq.all_hands`)
+    .order("created_at", { ascending: false })
+
+  if (error || !data) return []
+
+  return (data as any[]).map(p => ({
+    id: p.id,
+    message: p.message,
+    pingType: p.ping_type,
+    taskId: p.task_id,
+    fromAssociateId: p.from_associate_id,
+    fromName: (p as any).associates?.name ?? "Unknown",
+    createdAt: p.created_at,
+  }))
+}
+
+export async function acknowledgePing(
+  pingId: string,
+  acknowledgedByAssociateId: string
+): Promise<boolean> {
+  const db = supabase as any
+  const { error } = await db
+    .from("pings")
+    .update({
+      is_acknowledged: true,
+      acknowledged_by: acknowledgedByAssociateId,
+      acknowledged_at: new Date().toISOString(),
+    })
+    .eq("id", pingId)
+
+  return !error
+}
+
+export async function acceptTaskOffer(
+  pingId: string,
+  taskId: string,
+  acceptingAssociateId: string,
+  acceptingAssociateName: string,
+  originalAssociateId: string,
+  storeId: string,
+  startTime: string
+): Promise<boolean> {
+  // Acknowledge the ping
+  await acknowledgePing(pingId, acceptingAssociateId)
+
+  // Assign the task to the accepting associate
+  await supabase
+    .from("tasks")
+    .update({
+      assigned_to: acceptingAssociateName,
+      assigned_to_associate_id: acceptingAssociateId,
+      queue_position: 1,
+    })
+    .eq("id", taskId)
+
+  // Create assist record
+  const bucket = getShiftBucket(startTime)
+  const db = supabase as any
+  await db.from("assists").insert({
+    store_id: storeId,
+    original_associate_id: originalAssociateId,
+    assist_associate_id: acceptingAssociateId,
+    task_id: taskId,
+    ping_id: pingId,
+    shift_date: new Date().toISOString().split("T")[0],
+    shift_bucket: bucket,
+  })
+
+  return true
+}

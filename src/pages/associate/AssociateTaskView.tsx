@@ -10,7 +10,9 @@ import { LoadingSpinner } from "../../components/LoadingSpinner"
 import { CodeCheckPanel } from "../../components/CodeCheckPanel"
 import { WhosWorkingPanel } from "../../components/WhosWorkingPanel"
 import { RadialMenu } from "../../components/gamification/RadialMenu"
+import { ArchetypeOfferModal } from "../../components/gamification/ArchetypeOfferModal"
 import { SOPViewer } from "../../components/gamification/SOPViewer"
+import { PingBanner } from "../../components/PingBanner"
 import { PhotoCapture } from "../../components/gamification/PhotoCapture"
 import { SlowReasonModal } from "../../components/gamification/SlowReasonModal"
 import { BurnCardModal } from "../../components/gamification/BurnCardModal"
@@ -97,6 +99,7 @@ export function AssociateTaskView({
   const [sopTask, setSopTask] = useState<Task | null>(null)
   const [burnCards, setBurnCards] = useState(0)
   const [burnCardTask, setBurnCardTask] = useState<{ taskId: string; taskName: string } | null>(null)
+  const [offeringTask, setOfferingTask] = useState<{ taskId: string; taskName: string } | null>(null)
 
   useEffect(() => {
     if (associate.profile_id) {
@@ -105,7 +108,7 @@ export function AssociateTaskView({
   }, [associate.profile_id])
 
   async function handleRadialAction(
-    direction: "up" | "down" | "left" | "right" | "up-left",
+    direction: "up" | "down" | "left" | "right" | "up-left" | "left-hold",
     taskId: string
   ) {
     const task = [...myTasks, ...archetypeTasks].find(t => t.id === taskId)
@@ -113,6 +116,9 @@ export function AssociateTaskView({
     switch (direction) {
       case "left":
         completeTask(taskId)
+        break
+      case "left-hold":
+        if (task) setOfferingTask({ taskId, taskName: task.task_name })
         break
       case "up": {
         const requestId = await createAssistanceRequest(
@@ -175,6 +181,14 @@ export function AssociateTaskView({
 
   return (
     <div className="min-h-screen bg-akyra-black">
+      <PingBanner
+        storeId={associate.store_id}
+        associateId={associate.id}
+        associateName={associate.name}
+        archetype={station}
+        defaultStartTime={associate.default_start_time}
+      />
+
       {/* Header */}
       <header className="flex items-center justify-between px-6 py-4 border-b border-akyra-border">
         <div>
@@ -427,6 +441,22 @@ export function AssociateTaskView({
             setShowIssueForm(true)
           }}
           onDismiss={clearPendingVerification}
+        />
+      )}
+
+      {offeringTask && (
+        <ArchetypeOfferModal
+          taskId={offeringTask.taskId}
+          taskName={offeringTask.taskName}
+          storeId={associate.store_id}
+          fromAssociateId={associate.id}
+          fromAssociateName={associate.name}
+          orgStations={orgStations.map(s => s.name)}
+          onDismiss={() => setOfferingTask(null)}
+          onOffered={() => {
+            setOfferingTask(null)
+            refetch()
+          }}
         />
       )}
 
