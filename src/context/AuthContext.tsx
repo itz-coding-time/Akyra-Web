@@ -235,6 +235,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session?.user) return
 
+    // Try to find profile by auth_uid first
     const { data: profile } = await supabase
       .from("profiles")
       .select("*")
@@ -243,7 +244,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (profile) {
       await resolveSessionState(profile)
+      return
     }
+
+    // Try to find profile by google_email (for db_admin Google OAuth flow)
+    if (session.user.email) {
+      const { data: profileByEmail } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("google_email", session.user.email)
+        .maybeSingle()
+
+      if (profileByEmail) {
+        // Link auth_uid if not already linked
+        if (!profileByEmail.auth_uid) {
+          await supabase
+            .from("profiles")
+            .update({ auth_uid: session.user.id })
+            .eq("id", profileByEmail.id)
+        }
+        await resolveSessionState(profileByEmail)
+        return
+      }
+    }
+
+    // No profile found — sign out
+    await supabase.auth.signOut()
+    setState({ status: "signed-out", profile: null, licenseWarning: null, error: null })
   }, [resolveSessionState])
 
   const dismissPasskeyPrompt = useCallback(() => {

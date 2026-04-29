@@ -6,52 +6,43 @@ import { AkyraLogo } from "../components/AkyraLogo"
 import { LoadingSpinner } from "../components/LoadingSpinner"
 import { supabase } from "../lib/supabase"
 
-const DB_ADMIN_EMAIL = "therealbrancase@gmail.com"
-
 export function AuthCallbackPage() {
   const navigate = useNavigate()
   const { resolveSession } = useAuth()
 
   useEffect(() => {
     async function handleCallback() {
+      // Check if this is a dbad flow — if so, do nothing
+      // The DbAdminLoginPage handles its own auth state
       const isDbAdmin = sessionStorage.getItem("dbadmin_flow") === "true"
-      const eeid = sessionStorage.getItem("pending_google_eeid")
+      if (isDbAdmin) {
+        sessionStorage.removeItem("dbadmin_flow")
+        // DbAdminLoginPage's onAuthStateChange will handle this
+        return
+      }
 
-      sessionStorage.removeItem("dbadmin_flow")
+      const eeid = sessionStorage.getItem("pending_google_eeid")
       sessionStorage.removeItem("pending_google_eeid")
 
       const { data: { session } } = await supabase.auth.getSession()
 
       if (!session) {
-        navigate("/")
+        navigate("/app/login", { replace: true })
         return
       }
 
-      if (isDbAdmin) {
-        // DB Admin whitelist check — wrong account silently redirects to /
-        if (session.user.email !== DB_ADMIN_EMAIL) {
-          await supabase.auth.signOut()
-          navigate("/")
-          return
-        }
-        // DB Admin authenticated — resolve session and enter dashboard
-        await resolveSession()
-        navigate("/app/dashboard")
-        return
-      }
-
-      // Regular Google auth flow
       if (!eeid) {
-        navigate("/app/login")
+        navigate("/app/login", { replace: true })
         return
       }
 
       const result = await handleGoogleCallback(eeid)
+
       if (result.kind === "success") {
         await resolveSession()
-        navigate("/app/dashboard")
+        navigate("/app/dashboard", { replace: true })
       } else {
-        navigate("/app/login")
+        navigate("/app/login", { replace: true })
       }
     }
 
