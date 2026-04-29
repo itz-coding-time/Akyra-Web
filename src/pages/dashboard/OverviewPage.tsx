@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react"
-import { ChevronDown, ChevronUp } from "lucide-react"
+import { ChevronDown, ChevronUp, Shield } from "lucide-react"
 import { useAuth } from "../../context"
 import { useAssociates, useStationBoard, usePacingBoard, useCodeCheck, useSupervisorTasks } from "../../hooks"
 import { StationBoard } from "../../components/StationBoard"
@@ -13,6 +13,7 @@ import { CreateTaskFAB } from "../../components/CreateTaskFAB"
 import { AssistancePanel } from "../../components/gamification/AssistancePanel"
 import { SupervisorPingPanel } from "../../components/SupervisorPingPanel"
 import { fetchSupervisorPersonalMetrics } from "../../lib"
+import { RespawnAuthorizationPanel } from "../../components/RespawnAuthorizationPanel"
 import type { Database } from "../../types/database.types"
 
 type Task = Database["public"]["Tables"]["tasks"]["Row"]
@@ -46,6 +47,7 @@ export function OverviewPage() {
   const [assigningTask, setAssigningTask] = useState<Task | null>(null)
   const [supervisorMetrics, setSupervisorMetrics] = useState<any>(null)
   const [metricsOpen, setMetricsOpen] = useState(false)
+  const [showRespawnAuth, setShowRespawnAuth] = useState(false)
 
   useEffect(() => {
     if (!storeId || !profile?.display_name) return
@@ -71,6 +73,15 @@ export function OverviewPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          {supervisorAssociateId && (
+            <button
+              onClick={() => setShowRespawnAuth(true)}
+              className="flex items-center gap-2 text-xs font-mono uppercase tracking-widest text-akyra-secondary hover:text-white border border-akyra-border rounded-lg px-3 py-2 transition-colors"
+            >
+              <Shield className="w-3.5 h-3.5" />
+              Respawn
+            </button>
+          )}
           {storeId && supervisorAssociateId && (
             <SupervisorPingPanel
               storeId={storeId}
@@ -257,6 +268,14 @@ export function OverviewPage() {
             </div>
           )}
         </div>
+      )}
+
+      {/* Respawn Authorization Panel */}
+      {showRespawnAuth && supervisorAssociateId && (
+        <RespawnAuthorizationPanel
+          supervisorAssociateId={supervisorAssociateId}
+          onDismiss={() => setShowRespawnAuth(false)}
+        />
       )}
 
       {/* Assign Task Sheet */}

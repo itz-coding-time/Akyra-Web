@@ -15,6 +15,7 @@ import {
   signInWithPasskey,
 } from "../lib"
 import { ClaimAccountScreen } from "./ClaimAccountScreen"
+import { RespawnRequestScreen } from "./RespawnRequestScreen"
 
 type LoginStep =
   | "welcome-code"
@@ -42,6 +43,7 @@ export function LoginPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [claimingEeid, setClaimingEeid] = useState<string | null>(null)
+  const [respawning, setRespawning] = useState(false)
 
   // Check for cached welcome code on mount
   useEffect(() => {
@@ -137,6 +139,15 @@ export function LoginPage() {
     } else {
       setError("Incorrect password. Try again.")
     }
+  }
+
+  if (respawning) {
+    return (
+      <RespawnRequestScreen
+        eeid={eeid}
+        onBack={() => setRespawning(false)}
+      />
+    )
   }
 
   // ClaimAccountScreen — first login
@@ -298,6 +309,14 @@ export function LoginPage() {
             >
               ← Back
             </button>
+
+            <button
+              type="button"
+              onClick={() => setRespawning(true)}
+              className="w-full text-[10px] font-mono text-white/15 hover:text-white/30 transition-colors mt-4"
+            >
+              I can't get in
+            </button>
           </form>
         )}
 
@@ -340,6 +359,13 @@ export function LoginPage() {
               className="text-xs font-mono text-akyra-secondary hover:text-white transition-colors"
             >
               Use password instead
+            </button>
+
+            <button
+              onClick={() => setRespawning(true)}
+              className="text-[10px] font-mono text-white/15 hover:text-white/30 transition-colors mt-4"
+            >
+              I can't get in
             </button>
           </div>
         )}
