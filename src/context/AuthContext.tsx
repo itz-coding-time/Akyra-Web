@@ -37,7 +37,7 @@ interface AuthContextValue {
     orgId: string,
     storeId: string
   ) => Promise<SignInResult>
-  resolveSession: () => Promise<void>
+  resolveSession: () => Promise<Profile | null>
   signOut: () => Promise<void>
   dismissPasskeyPrompt: () => void
 }
@@ -233,7 +233,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const resolveSession = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession()
-    if (!session?.user) return
+    if (!session?.user) return null
 
     // Try to find profile by auth_uid first
     const { data: profile } = await supabase
@@ -244,7 +244,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (profile) {
       await resolveSessionState(profile)
-      return
+      return profile
     }
 
     // Try to find profile by google_email (for db_admin Google OAuth flow)
@@ -263,14 +263,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             .update({ auth_uid: session.user.id })
             .eq("id", profileByEmail.id)
         }
-        await resolveSessionState(profileByEmail)
-        return
+        const resolvedProfile = {
+          ...profileByEmail,
+          auth_uid: profileByEmail.auth_uid ?? session.user.id,
+        }
+        await resolveSessionState(resolvedProfile)
+        return resolvedProfile
       }
     }
 
     // No profile found — sign out
     await supabase.auth.signOut()
     setState({ status: "signed-out", profile: null, licenseWarning: null, error: null })
+    return null
   }, [resolveSessionState])
 
   const dismissPasskeyPrompt = useCallback(() => {

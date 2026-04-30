@@ -1,8 +1,9 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useAutoUpdate } from "./hooks"
 import { UpdateOverlay } from "./components"
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom"
 import { useAuth } from "./context"
+import { consumeOAuthRedirectSession } from "./lib/supabase"
 import {
   LandingPage,
   AboutPage,
@@ -45,6 +46,30 @@ function ProtectedRoute({ children, minRank = 1 }: { children: React.ReactNode; 
   }
 
   return <>{children}</>
+}
+
+function OAuthRedirectRecovery() {
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    async function recoverOAuthRedirect() {
+      const hasOAuthParams =
+        window.location.search.includes("code=") ||
+        window.location.hash.includes("access_token=")
+
+      if (!hasOAuthParams) return
+
+      const consumed = await consumeOAuthRedirectSession()
+      if (!consumed) return
+
+      const pendingGoogleEeid = sessionStorage.getItem("pending_google_eeid")
+      navigate(pendingGoogleEeid ? "/app/auth/callback" : "/app/login/dbad", { replace: true })
+    }
+
+    recoverOAuthRedirect()
+  }, [navigate])
+
+  return null
 }
 
 function RoleRouter() {
@@ -151,6 +176,7 @@ function App() {
 
   return (
     <BrowserRouter>
+      <OAuthRedirectRecovery />
       <Routes>
         {/* Public landing surface */}
         <Route path="/" element={<LandingPage />} />
