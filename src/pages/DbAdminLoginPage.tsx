@@ -12,42 +12,38 @@ export function DbAdminLoginPage() {
   const [isChecking, setIsChecking] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // On mount: check if we already have a valid session
   useEffect(() => {
     async function checkSession() {
+      // If Supabase used PKCE flow, the URL will contain ?code=...
+      // Exchange it for a session before calling getSession()
+      const params = new URLSearchParams(window.location.search)
+      const code = params.get("code")
+      if (code) {
+        await supabase.auth.exchangeCodeForSession(code)
+      }
+
+      // Small delay to allow Supabase to parse a hash fragment (#access_token=...)
+      // if the implicit flow was used instead of PKCE
+      await new Promise(resolve => setTimeout(resolve, 200))
+
       const { data: { session } } = await supabase.auth.getSession()
 
-      if (session?.user?.email === DB_ADMIN_EMAIL) {
-        // Already authenticated as db_admin
-        navigate("/app/dashboard", { replace: true })
+      if (!session) {
+        // No session — show the login button
+        setIsChecking(false)
         return
       }
 
-      // Not authenticated — show login button
-      setIsChecking(false)
+      if (session.user.email === DB_ADMIN_EMAIL) {
+        navigate("/app/dashboard", { replace: true })
+      } else {
+        // Wrong Google account — sign out silently and return to home
+        await supabase.auth.signOut()
+        navigate("/", { replace: true })
+      }
     }
 
     checkSession()
-  }, [navigate])
-
-  // Listen for auth state changes — catches the OAuth callback
-  useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (event === "SIGNED_IN" && session) {
-          if (session.user.email === DB_ADMIN_EMAIL) {
-            // Authorized — go to dashboard
-            navigate("/app/dashboard", { replace: true })
-          } else {
-            // Wrong account — sign out silently
-            await supabase.auth.signOut()
-            navigate("/", { replace: true })
-          }
-        }
-      }
-    )
-
-    return () => subscription.unsubscribe()
   }, [navigate])
 
   async function handleGoogleSignIn() {
@@ -69,8 +65,8 @@ export function DbAdminLoginPage() {
       setError("Sign in failed. Please try again.")
       setIsLoading(false)
     }
-    // If no error — browser redirects to Google
-    // On return, onAuthStateChange handles the session
+    // If no error — browser navigates to Google, then back to /app/login/dbad
+    // The mount effect above will detect the session on return
   }
 
   if (isChecking) {
