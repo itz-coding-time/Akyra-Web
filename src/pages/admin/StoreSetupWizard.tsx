@@ -27,11 +27,17 @@ interface StoreSetupWizardProps {
   onDone: () => void
 }
 
+interface SeedCategoryResult {
+  success: number
+  failed: number
+  errors?: string[]
+}
+
 interface SeedResult {
-  associates?: { success: number; failed: number }
-  tasks?: { success: number; failed: number }
-  inventory?: { success: number; failed: number }
-  tableItems?: { success: number; failed: number }
+  associates?: SeedCategoryResult
+  tasks?: SeedCategoryResult
+  inventory?: SeedCategoryResult
+  tableItems?: SeedCategoryResult
 }
 
 export function StoreSetupWizard({
@@ -287,11 +293,18 @@ export function StoreSetupWizard({
               <div className="bg-white/5 border border-white/20 rounded-xl p-4 space-y-1">
                 <p className="text-xs font-mono uppercase tracking-widest text-white mb-2">Seeded</p>
                 {Object.entries(seedResult)
-                  .filter((entry): entry is [string, { success: number; failed: number }] => entry[1] !== undefined)
+                  .filter((entry): entry is [string, SeedCategoryResult] => entry[1] !== undefined)
                   .map(([key, val]) => (
-                    <p key={key} className="text-sm text-white/70">
-                      {key}: {val.success} ok, {val.failed} failed
-                    </p>
+                    <div key={key} className="space-y-1">
+                      <p className="text-sm text-white/70">
+                        {key}: {val.success} ok, {val.failed} failed
+                      </p>
+                      {val.errors?.map((message, i) => (
+                        <p key={i} className="text-xs font-mono text-akyra-red">
+                          {message}
+                        </p>
+                      ))}
+                    </div>
                   ))}
               </div>
             )}
@@ -567,11 +580,18 @@ export function StoreSetupWizard({
                   <div className="bg-white/5 border border-white/20 rounded-xl p-4 space-y-1">
                     <p className="text-xs font-mono uppercase tracking-widest text-white mb-2">Seeded</p>
                     {Object.entries(seedResult)
-                      .filter((entry): entry is [string, { success: number; failed: number }] => entry[1] !== undefined)
+                      .filter((entry): entry is [string, SeedCategoryResult] => entry[1] !== undefined)
                       .map(([key, val]) => (
-                        <p key={key} className="text-sm text-white/70">
-                          {key}: {val.success} ok, {val.failed} failed
-                        </p>
+                        <div key={key} className="space-y-1">
+                          <p className="text-sm text-white/70">
+                            {key}: {val.success} ok, {val.failed} failed
+                          </p>
+                          {val.errors?.map((message, i) => (
+                            <p key={i} className="text-xs font-mono text-akyra-red">
+                              {message}
+                            </p>
+                          ))}
+                        </div>
                       ))}
                   </div>
                 )}
