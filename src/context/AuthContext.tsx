@@ -8,7 +8,8 @@ import {
 } from "react"
 import { supabase } from "../lib/supabase"
 import {
-  fetchProfileByEeid,
+  fetchProfileByEeidAndOrg,
+  signInWithEeidAndOrg,
   fetchLicenseForProfile,
   signInWithEeidAndPin,
   registerAuthForProfile,
@@ -27,7 +28,7 @@ interface AuthContextValue {
   state: AuthState
   orgBranding: OrgBranding | null
   orgStations: OrgStation[]
-  signIn: (eeid: string, pin: string) => Promise<SignInResult>
+  signIn: (eeid: string, password: string, welcomePhrase: string) => Promise<SignInResult>
   completeFirstLogin: (eeid: string, pin: string) => Promise<SignInResult>
   completeOnboarding: (
     eeid: string,
@@ -134,21 +135,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [resolveSessionState])
 
   const signIn = useCallback(
-    async (eeid: string, pin: string): Promise<SignInResult> => {
+    async (eeid: string, password: string, welcomePhrase: string): Promise<SignInResult> => {
       setState((s) => ({ ...s, status: "loading", error: null }))
 
-      let profile = null
-      try {
-        profile = await fetchProfileByEeid(eeid)
-      } catch (e) {
-        console.error("fetchProfileByEeid threw:", e)
-      }
+      const profile = await fetchProfileByEeidAndOrg(eeid, welcomePhrase)
 
       if (!profile) {
-        if (!/^\d+$/.test(eeid)) {
-          setState((s) => ({ ...s, status: "signed-out", error: "Invalid EEID format" }))
-          return { kind: "error", message: "EEID must be numeric" }
-        }
         setState((s) => ({ ...s, status: "signed-out" }))
         return { kind: "new-user", eeid }
       }
@@ -158,19 +150,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { kind: "first-login", eeid }
       }
 
-      const signedIn = await signInWithEeidAndPin(eeid, pin)
+      // No password provided — caller needs to determine auth method
+      if (!password) {
+        setState((s) => ({ ...s, status: "signed-out" }))
+        return { kind: "error", message: "auth-method-select" }
+      }
+
+      const signedIn = await signInWithEeidAndOrg(eeid, password, welcomePhrase)
       if (!signedIn) {
-        setState((s) => ({ ...s, status: "signed-out", error: "Invalid password" }))
-        return { kind: "error", message: "Invalid password" }
+        setState((s) => ({ ...s, status: "signed-out", error: "Incorrect password" }))
+        return { kind: "error", message: "Incorrect password" }
       }
 
       await resolveSessionState(signedIn)
-      const license = await fetchLicenseForProfile(signedIn)
-      const warning = license?.status === "past_due"
-        ? "Your organization's subscription is past due."
-        : null
-
-      return { kind: "success", profile: signedIn, warning }
+      return { kind: "success", profile: signedIn, warning: null }
     },
     [resolveSessionState]
   )
@@ -242,6 +235,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session?.user) return
 
+    // Try to find profile by auth_uid first
     const { data: profile } = await supabase
       .from("profiles")
       .select("*")
@@ -250,7 +244,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (profile) {
       await resolveSessionState(profile)
+      return
     }
+
+    // Try to find profile by google_email (for db_admin Google OAuth flow)
+    if (session.user.email) {
+      const { data: profileByEmail } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("google_email", session.user.email)
+        .maybeSingle()
+
+      if (profileByEmail) {
+        // Link auth_uid if not already linked
+        if (!profileByEmail.auth_uid) {
+          await supabase
+            .from("profiles")
+            .update({ auth_uid: session.user.id })
+            .eq("id", profileByEmail.id)
+        }
+        await resolveSessionState(profileByEmail)
+        return
+      }
+    }
+
+    // No profile found — sign out
+    await supabase.auth.signOut()
+    setState({ status: "signed-out", profile: null, licenseWarning: null, error: null })
   }, [resolveSessionState])
 
   const dismissPasskeyPrompt = useCallback(() => {

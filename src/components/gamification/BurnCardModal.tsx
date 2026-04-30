@@ -4,14 +4,18 @@ import { LoadingSpinner } from "../LoadingSpinner"
 
 interface BurnCardModalProps {
   taskName: string
-  burnCardsRemaining: number
+  burnCards: number
+  squadCards: number
+  totalCards: number
   onConfirm: () => Promise<void>
   onDismiss: () => void
 }
 
 export function BurnCardModal({
   taskName,
-  burnCardsRemaining,
+  burnCards,
+  squadCards,
+  totalCards,
   onConfirm,
   onDismiss,
 }: BurnCardModalProps) {
@@ -49,10 +53,19 @@ export function BurnCardModal({
 
         {!burned ? (
           <>
-            <p className="text-xs text-akyra-secondary text-center">
-              You have {burnCardsRemaining} burn card{burnCardsRemaining !== 1 ? "s" : ""}.
-              Afterwards you will have {burnCardsRemaining - 1}.
-            </p>
+            <div className="space-y-1 text-center">
+              <p className="text-xs text-akyra-secondary text-center">
+                You have {totalCards} card{totalCards !== 1 ? "s" : ""} to spend.
+              </p>
+              {(burnCards > 0 || squadCards > 0) && (
+                <p className="text-[10px] font-mono text-akyra-secondary">
+                  🔥 {burnCards} Burn · 🤝 {squadCards} Squad
+                </p>
+              )}
+              <p className="text-[10px] font-mono text-white/30">
+                Afterwards you will have {totalCards - 1}.
+              </p>
+            </div>
 
             <div className="flex gap-3">
               <button

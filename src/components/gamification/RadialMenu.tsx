@@ -9,18 +9,20 @@ import {
 } from "lucide-react"
 
 export interface RadialAction {
-  direction: "up" | "down" | "left" | "right" | "up-left"
+  direction: "up" | "down" | "left" | "right" | "up-left" | "left-hold"
   label: string
   icon: React.ReactNode
   color: string
   available: boolean
 }
 
+type SelectDirection = RadialAction["direction"]
+
 interface RadialMenuProps {
   taskName: string
   position: { x: number; y: number }
   hasBurnCard: boolean
-  onSelect: (direction: RadialAction["direction"]) => void
+  onSelect: (direction: SelectDirection) => void
   onDismiss: () => void
 }
 
@@ -33,6 +35,25 @@ export function RadialMenu({
 }: RadialMenuProps) {
   const [upTapCount, setUpTapCount] = useState(0)
   const upTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [leftHolding, setLeftHolding] = useState(false)
+  const leftHoldTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  function handleLeftStart() {
+    setLeftHolding(false)
+    leftHoldTimer.current = setTimeout(() => {
+      setLeftHolding(true)
+      onSelect("left-hold")
+    }, 1500)
+  }
+
+  function handleLeftEnd() {
+    if (leftHoldTimer.current) clearTimeout(leftHoldTimer.current)
+    if (!leftHolding) {
+      onSelect("left")
+      onDismiss()
+    }
+    setLeftHolding(false)
+  }
 
   const actions: RadialAction[] = [
     {
@@ -46,7 +67,7 @@ export function RadialMenu({
     },
     {
       direction: "left",
-      label: "Complete",
+      label: leftHolding ? "OFFER" : "Complete",
       icon: <CheckCircle className="w-5 h-5" />,
       color: "bg-white/10 text-white",
       available: true,
@@ -113,11 +134,12 @@ export function RadialMenu({
 
   const RADIUS = 72
   const positions: Record<RadialAction["direction"], { x: number; y: number }> = {
-    "up":       { x: 0,        y: -RADIUS },
-    "left":     { x: -RADIUS,  y: 0 },
-    "right":    { x: RADIUS,   y: 0 },
-    "down":     { x: 0,        y: RADIUS },
-    "up-left":  { x: -RADIUS * 0.7, y: -RADIUS * 0.7 },
+    "up":        { x: 0,        y: -RADIUS },
+    "left":      { x: -RADIUS,  y: 0 },
+    "right":     { x: RADIUS,   y: 0 },
+    "down":      { x: 0,        y: RADIUS },
+    "up-left":   { x: -RADIUS * 0.7, y: -RADIUS * 0.7 },
+    "left-hold": { x: -RADIUS,  y: 0 },
   }
 
   return (
@@ -154,6 +176,7 @@ export function RadialMenu({
       {/* Action buttons */}
       {actions.map(action => {
         const pos = positions[action.direction]
+        const isLeft = action.direction === "left"
         return (
           <button
             key={action.direction}
@@ -166,8 +189,10 @@ export function RadialMenu({
             }}
             onClick={e => {
               e.stopPropagation()
-              handleActionTap(action)
+              if (!isLeft) handleActionTap(action)
             }}
+            onTouchStart={isLeft ? e => { e.stopPropagation(); handleLeftStart() } : undefined}
+            onTouchEnd={isLeft ? e => { e.stopPropagation(); handleLeftEnd() } : undefined}
           >
             {action.icon}
             <span className="text-[8px] font-mono uppercase tracking-wider leading-none">

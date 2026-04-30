@@ -3,10 +3,15 @@ import {
   fetchAllOrgs,
   fetchStoresForOrg,
   fetchProfilesForStore,
+  fetchDistrictsForOrg,
+  createDistrict,
   updateProfileRole,
   getRoleDisplayName,
+  fetchRegionsForOrg,
+  createRegion,
   type OrgSummary,
   type StoreSummary,
+  type RegionSummary,
 } from "../../lib"
 import { NewOrgFlow } from "./NewOrgFlow"
 import { StoreSetupWizard } from "./StoreSetupWizard"
@@ -15,10 +20,11 @@ import { StationManager } from "./StationManager"
 import { RoleDisplayNameEditor } from "./RoleDisplayNameEditor"
 import { ReportAliasManager } from "./ReportAliasManager"
 import { LoadingSpinner } from "../../components/LoadingSpinner"
+import { PasswordResetModal } from "../../components/PasswordResetModal"
 import { AkyraLogo } from "../../components/AkyraLogo"
 import { useAuth } from "../../context"
 import { useNavigate } from "react-router-dom"
-import { ChevronRight, Building2, Users } from "lucide-react"
+import { ChevronRight, Building2, Users, Plus } from "lucide-react"
 import { Store } from "lucide-react"
 import type { Profile } from "../../types"
 
@@ -28,13 +34,23 @@ const ROLE_OPTIONS = [
   { role: "assistant_manager", rank: 3, label: "Assistant Manager" },
   { role: "store_manager",     rank: 4, label: "Store Manager" },
   { role: "district_admin",    rank: 5, label: "District Admin" },
-  { role: "org_admin",         rank: 6, label: "Org Admin" },
-  { role: "db_admin",          rank: 7, label: "DB Admin" },
+  { role: "regional_admin",    rank: 6, label: "Regional Admin" },
+  { role: "org_admin",         rank: 7, label: "Org Admin" },
+  { role: "db_admin",          rank: 8, label: "Platform Admin" },
 ]
+
+interface DistrictSummary {
+  id: string
+  name: string
+  orgId: string
+  districtManagerId: string | null
+  storeCount: number
+}
 
 type AdminView =
   | { level: "orgs" }
-  | { level: "stores"; org: OrgSummary }
+  | { level: "districts"; org: OrgSummary }
+  | { level: "stores"; org: OrgSummary; district?: DistrictSummary }
   | { level: "profiles"; org: OrgSummary; store: StoreSummary }
 
 export function DbAdminPanel() {
@@ -53,17 +69,54 @@ export function DbAdminPanel() {
   const [managingStations, setManagingStations] = useState<{ id: string; name: string } | null>(null)
   const [editingRoles, setEditingRoles] = useState<{ id: string; name: string } | null>(null)
   const [reportStore, setReportStore] = useState<{ id: string; name: string } | null>(null)
+  const [districts, setDistricts] = useState<DistrictSummary[]>([])
+  const [showAddDistrict, setShowAddDistrict] = useState(false)
+  const [newDistrictName, setNewDistrictName] = useState("")
+  const [isCreatingDistrict, setIsCreatingDistrict] = useState(false)
+  const [resettingProfile, setResettingProfile] = useState<{ authUid: string; name: string } | null>(null)
+  const [managingRegions, setManagingRegions] = useState<{ id: string; name: string } | null>(null)
+  const [regions, setRegions] = useState<RegionSummary[]>([])
+  const [newRegionName, setNewRegionName] = useState("")
+  const [showAddRegion, setShowAddRegion] = useState(false)
+  const [isCreatingRegion, setIsCreatingRegion] = useState(false)
 
   useEffect(() => {
     setIsLoading(true)
     if (view.level === "orgs") {
       fetchAllOrgs().then(data => { setOrgs(data); setIsLoading(false) })
+    } else if (view.level === "districts") {
+      fetchDistrictsForOrg(view.org.id).then(data => {
+        setDistricts(data)
+        setIsLoading(false)
+      })
     } else if (view.level === "stores") {
-      fetchStoresForOrg(view.org.id).then(data => { setStores(data); setIsLoading(false) })
+      fetchStoresForOrg(view.org.id).then(data => {
+        const filtered = (view as any).district
+          ? data.filter(s => (s as any).districtId === (view as any).district.id)
+          : data
+        setStores(filtered)
+        setIsLoading(false)
+      })
     } else if (view.level === "profiles") {
-      fetchProfilesForStore(view.store.id).then(data => { setProfiles(data); setIsLoading(false) })
+      fetchProfilesForStore(view.store.id).then(data => {
+        setProfiles(data)
+        setIsLoading(false)
+      })
     }
   }, [view])
+
+  async function handleCreateDistrict() {
+    if (!newDistrictName.trim() || view.level !== "districts") return
+    setIsCreatingDistrict(true)
+    const id = await createDistrict(view.org.id, newDistrictName.trim())
+    if (id) {
+      const updated = await fetchDistrictsForOrg(view.org.id)
+      setDistricts(updated)
+      setNewDistrictName("")
+      setShowAddDistrict(false)
+    }
+    setIsCreatingDistrict(false)
+  }
 
   async function handleRoleUpdate(role: string, rank: number) {
     if (!editingProfile) return
@@ -105,36 +158,51 @@ export function DbAdminPanel() {
       </header>
 
       {/* Breadcrumb */}
-      <div className="flex items-center gap-2 px-6 py-3 border-b border-akyra-border justify-between">
+      <div className="flex items-center gap-2 px-6 py-3 border-b border-akyra-border overflow-x-auto">
         <button
           onClick={() => setView({ level: "orgs" })}
-          className={`text-xs font-mono ${view.level === "orgs" ? "text-white" : "text-akyra-secondary hover:text-white"} transition-colors`}
+          className={`text-xs font-mono shrink-0 ${view.level === "orgs" ? "text-white" : "text-akyra-secondary hover:text-white"}`}
         >
           Organizations
         </button>
+
         {view.level !== "orgs" && (
           <>
-            <ChevronRight className="w-3 h-3 text-akyra-secondary" />
+            <ChevronRight className="w-3 h-3 text-akyra-secondary shrink-0" />
             <button
-              onClick={() => view.level === "profiles" && setView({ level: "stores", org: view.org })}
-              className={`text-xs font-mono ${view.level === "stores" ? "text-white" : "text-akyra-secondary hover:text-white"} transition-colors`}
+              onClick={() => setView({ level: "districts", org: view.org })}
+              className={`text-xs font-mono shrink-0 ${view.level === "districts" ? "text-white" : "text-akyra-secondary hover:text-white"}`}
             >
               {view.org.name}
             </button>
           </>
         )}
+
+        {(view.level === "stores" || view.level === "profiles") && (
+          <>
+            <ChevronRight className="w-3 h-3 text-akyra-secondary shrink-0" />
+            <button
+              onClick={() => view.level === "profiles" && setView({ level: "stores", org: view.org })}
+              className={`text-xs font-mono shrink-0 ${view.level === "stores" ? "text-white" : "text-akyra-secondary hover:text-white"}`}
+            >
+              {(view as any).district?.name ?? "All Stores"}
+            </button>
+          </>
+        )}
+
         {view.level === "profiles" && (
           <>
-            <ChevronRight className="w-3 h-3 text-akyra-secondary" />
-            <span className="text-xs font-mono text-white">
+            <ChevronRight className="w-3 h-3 text-akyra-secondary shrink-0" />
+            <span className="text-xs font-mono text-white shrink-0">
               Store {view.store.storeNumber}
             </span>
           </>
         )}
+
         {view.level === "orgs" && (
           <button
             onClick={() => setShowNewOrg(true)}
-            className="flex items-center gap-2 text-xs font-mono uppercase tracking-widest text-white border border-akyra-border rounded-lg px-3 py-2 hover:border-white/40 transition-colors"
+            className="ml-auto flex items-center gap-2 text-xs font-mono uppercase tracking-widest text-white border border-akyra-border rounded-lg px-3 py-2 hover:border-white/40 transition-colors shrink-0"
           >
             + New Org
           </button>
@@ -153,7 +221,7 @@ export function DbAdminPanel() {
               <div
                 key={org.id}
                 className="w-full bg-akyra-surface border border-akyra-border rounded-xl p-4 flex items-center justify-between hover:border-white/40 transition-colors cursor-pointer"
-                onClick={() => setView({ level: "stores", org })}
+                onClick={() => setView({ level: "districts", org })}
               >
                 <div className="flex items-center gap-3">
                   <Building2 className="w-5 h-5 text-akyra-secondary" />
@@ -206,10 +274,101 @@ export function DbAdminPanel() {
                   >
                     Roles
                   </button>
+                  <button
+                    onClick={e => {
+                      e.stopPropagation()
+                      setManagingRegions({ id: org.id, name: org.name })
+                      fetchRegionsForOrg(org.id).then(setRegions)
+                    }}
+                    className="text-[10px] font-mono uppercase tracking-widest text-akyra-secondary hover:text-white border border-akyra-border rounded px-2 py-1 transition-colors"
+                  >
+                    Regions
+                  </button>
                   <ChevronRight className="w-4 h-4 text-akyra-secondary" />
                 </div>
               </div>
             ))}
+
+            {/* Districts list */}
+            {view.level === "districts" && (
+              <div className="space-y-3">
+                {/* All Stores shortcut */}
+                <button
+                  onClick={() => setView({ level: "stores", org: view.org })}
+                  className="w-full bg-akyra-surface border border-white/10 rounded-xl p-4 flex items-center justify-between hover:border-white/30 transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <Store className="w-5 h-5 text-akyra-secondary" />
+                    <div className="text-left">
+                      <p className="font-semibold text-white">All Stores</p>
+                      <p className="text-xs font-mono text-akyra-secondary">
+                        View all stores regardless of district
+                      </p>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-akyra-secondary" />
+                </button>
+
+                {/* District list */}
+                {districts.map(district => (
+                  <button
+                    key={district.id}
+                    onClick={() => setView({ level: "stores", org: view.org, district })}
+                    className="w-full bg-akyra-surface border border-akyra-border rounded-xl p-4 flex items-center justify-between hover:border-white/40 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Building2 className="w-5 h-5 text-akyra-secondary" />
+                      <div className="text-left">
+                        <p className="font-semibold text-white">{district.name}</p>
+                        <p className="text-xs font-mono text-akyra-secondary">
+                          {district.storeCount} stores
+                        </p>
+                      </div>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-akyra-secondary" />
+                  </button>
+                ))}
+
+                {/* Add district inline form or button */}
+                {showAddDistrict ? (
+                  <div className="bg-akyra-surface border border-white/20 rounded-xl p-4 space-y-3">
+                    <p className="text-xs font-mono uppercase tracking-widest text-akyra-secondary">
+                      New District
+                    </p>
+                    <input
+                      value={newDistrictName}
+                      onChange={e => setNewDistrictName(e.target.value)}
+                      placeholder="e.g. Western Maryland"
+                      autoFocus
+                      className="w-full bg-akyra-black border border-akyra-border rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-white"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => { setShowAddDistrict(false); setNewDistrictName("") }}
+                        className="flex-1 py-2 rounded-lg border border-akyra-border text-akyra-secondary text-sm"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleCreateDistrict}
+                        disabled={!newDistrictName.trim() || isCreatingDistrict}
+                        className="flex-1 py-2 rounded-lg bg-white text-black text-sm font-bold disabled:opacity-50"
+                      >
+                        {isCreatingDistrict ? "Creating..." : "Create"}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowAddDistrict(true)}
+                    className="w-full py-3 rounded-xl border border-dashed border-akyra-border text-akyra-secondary hover:border-white/40 hover:text-white transition-colors flex items-center justify-center gap-2 text-sm"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add District
+                  </button>
+                )}
+              </div>
+            )}
 
             {/* Stores list */}
             {view.level === "stores" && stores.map(store => (
@@ -293,6 +452,20 @@ export function DbAdminPanel() {
                       </div>
                     </div>
                   </div>
+                  {profile.auth_uid && (
+                    <button
+                      onClick={e => {
+                        e.stopPropagation()
+                        setResettingProfile({
+                          authUid: profile.auth_uid!,
+                          name: profile.display_name,
+                        })
+                      }}
+                      className="text-[10px] font-mono uppercase tracking-widest text-akyra-secondary hover:text-akyra-red border border-akyra-border rounded px-2 py-1 transition-colors"
+                    >
+                      Reset PW
+                    </button>
+                  )}
                   <ChevronRight className={`w-4 h-4 text-akyra-secondary transition-transform ${
                     editingProfile?.id === profile.id ? "rotate-90" : ""
                   }`} />
@@ -387,6 +560,103 @@ export function DbAdminPanel() {
           orgName={editingRoles.name}
           onDone={() => setEditingRoles(null)}
         />
+      )}
+      {resettingProfile && (
+        <PasswordResetModal
+          associateName={resettingProfile.name}
+          authUid={resettingProfile.authUid}
+          onDone={() => setResettingProfile(null)}
+          onDismiss={() => setResettingProfile(null)}
+        />
+      )}
+      {managingRegions && (
+        <div className="fixed inset-0 z-50 bg-black overflow-y-auto">
+          <div className="max-w-lg mx-auto px-6 py-8 space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-black text-white">Regions</h2>
+                <p className="text-xs font-mono text-akyra-secondary">{managingRegions.name}</p>
+              </div>
+              <button
+                onClick={() => { setManagingRegions(null); setShowAddRegion(false); setNewRegionName("") }}
+                className="text-akyra-secondary hover:text-white transition-colors text-xs font-mono uppercase tracking-widest"
+              >
+                Done
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              {regions.length === 0 && !showAddRegion && (
+                <p className="text-sm text-akyra-secondary">No regions yet.</p>
+              )}
+              {regions.map(region => (
+                <div
+                  key={region.id}
+                  className="bg-akyra-surface border border-akyra-border rounded-xl p-4 flex items-center justify-between"
+                >
+                  <div className="flex items-center gap-3">
+                    <Building2 className="w-4 h-4 text-akyra-secondary" />
+                    <div>
+                      <p className="font-semibold text-white text-sm">{region.name}</p>
+                      <p className="text-xs font-mono text-akyra-secondary">
+                        {region.districtCount} districts · {region.storeCount} stores
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {showAddRegion ? (
+                <div className="bg-akyra-surface border border-white/20 rounded-xl p-4 space-y-3">
+                  <p className="text-xs font-mono uppercase tracking-widest text-akyra-secondary">
+                    New Region
+                  </p>
+                  <input
+                    value={newRegionName}
+                    onChange={e => setNewRegionName(e.target.value)}
+                    placeholder="e.g. Mid-Atlantic"
+                    autoFocus
+                    className="w-full bg-akyra-black border border-akyra-border rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-white"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => { setShowAddRegion(false); setNewRegionName("") }}
+                      className="flex-1 py-2 rounded-lg border border-akyra-border text-akyra-secondary text-sm"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (!newRegionName.trim()) return
+                        setIsCreatingRegion(true)
+                        const id = await createRegion(managingRegions.id, newRegionName.trim())
+                        if (id) {
+                          const updated = await fetchRegionsForOrg(managingRegions.id)
+                          setRegions(updated)
+                          setNewRegionName("")
+                          setShowAddRegion(false)
+                        }
+                        setIsCreatingRegion(false)
+                      }}
+                      disabled={!newRegionName.trim() || isCreatingRegion}
+                      className="flex-1 py-2 rounded-lg bg-white text-black text-sm font-bold disabled:opacity-50"
+                    >
+                      {isCreatingRegion ? "Creating..." : "Create"}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowAddRegion(true)}
+                  className="w-full py-3 rounded-xl border border-dashed border-akyra-border text-akyra-secondary hover:border-white/40 hover:text-white transition-colors flex items-center justify-center gap-2 text-sm"
+                >
+                  <Plus className="w-4 h-4" />
+                  Add Region
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

@@ -26,6 +26,7 @@ export function EndOfShiftResults({
   onDone,
 }: EndOfShiftResultsProps) {
   const killLeader = teamResults.find(r => r.result.is_kill_leader)
+  const mvp = teamResults.find(r => (r.result as any).is_mvp)
 
   return (
     <div className="fixed inset-0 bg-black z-50 overflow-y-auto">
@@ -54,6 +55,21 @@ export function EndOfShiftResults({
               </p>
               <p className="text-xs text-white/40 mt-1">
                 +1 Burn Card earned
+              </p>
+            </div>
+          )}
+
+          {/* MVP */}
+          {mvp && mvp.result.associate_id !== killLeader?.result.associate_id && (
+            <div className="bg-white/5 border border-white/20 rounded-2xl p-4 text-center">
+              <p className="text-[10px] font-mono uppercase tracking-widest text-white/30 mb-2">
+                MVP
+              </p>
+              <p className="text-xl font-black text-white">
+                {mvp.associateName.split(" ")[0]}
+              </p>
+              <p className="text-xs text-white/40 mt-1">
+                {(mvp.result as any).assists_given} assist{(mvp.result as any).assists_given !== 1 ? "s" : ""} · +1 Squad Card earned
               </p>
             </div>
           )}
@@ -109,6 +125,7 @@ export function EndOfShiftResults({
                     <div className="flex justify-between mt-1.5">
                       <span className="text-[10px] font-mono text-white/30">
                         {result.tasks_completed}/{result.tasks_total} tasks
+                        {(result as any).assists_given > 0 && ` · ${(result as any).assists_given} assists`}
                       </span>
                       <span className={`text-[10px] font-mono ${config.color}`}>
                         {pct}%

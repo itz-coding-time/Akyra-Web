@@ -36,6 +36,93 @@ export async function fetchProfileByEeid(eeid: string): Promise<Profile | null> 
   return data
 }
 
+const WELCOME_CODE_KEY = "akyra_org_code"
+
+/**
+ * Fetch profile by EEID scoped to a specific org via welcome phrase.
+ * Returns null if the EEID doesn't exist in that org.
+ * This prevents cross-org profile discovery.
+ */
+export async function fetchProfileByEeidAndOrg(
+  eeid: string,
+  welcomePhrase: string
+): Promise<Profile | null> {
+  const { data: license, error: licenseError } = await supabase
+    .from("licenses")
+    .select("org_id, status")
+    .eq("welcome_phrase", welcomePhrase)
+    .maybeSingle()
+
+  if (licenseError || !license) {
+    console.log("[Auth] Welcome phrase not found:", welcomePhrase)
+    return null
+  }
+
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("eeid", eeid)
+    .eq("org_id", license.org_id)
+    .maybeSingle()
+
+  if (profileError || !profile) {
+    console.log("[Auth] Profile not found for EEID in org:", eeid, license.org_id)
+    return null
+  }
+
+  return profile
+}
+
+/**
+ * Validate a welcome phrase and return the org info.
+ * Used in step 0 of the login flow.
+ */
+export async function validateWelcomeCode(
+  welcomePhrase: string
+): Promise<{ orgId: string; orgName: string; brandName: string | null } | null> {
+  const { data, error } = await supabase
+    .from("licenses")
+    .select(`
+      org_id,
+      status,
+      organizations!org_id(name, brand_name)
+    `)
+    .eq("welcome_phrase", welcomePhrase)
+    .maybeSingle()
+
+  if (error || !data) return null
+
+  if (data.status === "cancelled") return null
+
+  const org = (data as any).organizations
+  return {
+    orgId: data.org_id,
+    orgName: org?.name ?? "Unknown",
+    brandName: org?.brand_name ?? null,
+  }
+}
+
+/**
+ * Cache welcome code to localStorage.
+ */
+export function cacheWelcomeCode(welcomePhrase: string): void {
+  localStorage.setItem(WELCOME_CODE_KEY, welcomePhrase)
+}
+
+/**
+ * Get cached welcome code from localStorage.
+ */
+export function getCachedWelcomeCode(): string | null {
+  return localStorage.getItem(WELCOME_CODE_KEY)
+}
+
+/**
+ * Clear cached welcome code (org switch or logout).
+ */
+export function clearWelcomeCode(): void {
+  localStorage.removeItem(WELCOME_CODE_KEY)
+}
+
 // ── Licensing ─────────────────────────────────────────────────────────────
 
 export async function fetchLicenseByPhrase(phrase: string): Promise<License | null> {
@@ -250,6 +337,31 @@ export async function signInWithEeidAndPin(
   return null
 }
 
+/**
+ * Sign in with EEID, password, and welcome phrase (org-scoped).
+ * Uses the synthetic email {eeid}.{welcomePhrase}@akyra.internal.
+ */
+export async function signInWithEeidAndOrg(
+  eeid: string,
+  password: string,
+  welcomePhrase: string
+): Promise<Profile | null> {
+  const syntheticEmail = buildSyntheticEmail(eeid, welcomePhrase)
+  console.log("[Auth] Attempting sign in:", syntheticEmail)
+
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: syntheticEmail,
+    password,
+  })
+
+  if (error || !data.user) {
+    console.error("[Auth] Sign in failed:", error?.message)
+    return null
+  }
+
+  return fetchProfileByEeidAndOrg(eeid, welcomePhrase)
+}
+
 export async function registerAuthForProfile(
   eeid: string,
   pin: string
@@ -316,6 +428,56 @@ export async function registerAuthForProfile(
   }
 
   return fetchProfileByEeid(eeid)
+}
+
+/**
+ * Register auth credentials for a pre-seeded profile, org-scoped.
+ * Called from ClaimAccountScreen on first login.
+ */
+export async function registerAuthForOrg(
+  eeid: string,
+  password: string,
+  welcomePhrase: string
+): Promise<Profile | null> {
+  const syntheticEmail = buildSyntheticEmail(eeid, welcomePhrase)
+  console.log("[Auth] Registering:", syntheticEmail)
+
+  const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+    email: syntheticEmail,
+    password,
+  })
+
+  let authUid: string | null = null
+
+  if (signUpError) {
+    if (signUpError.message.includes("already registered")) {
+      // Try signing in — previous incomplete registration
+      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+        email: syntheticEmail,
+        password,
+      })
+      if (signInError || !signInData.user) {
+        console.error("[Auth] Already registered but wrong password")
+        return null
+      }
+      authUid = signInData.user.id
+    } else {
+      console.error("[Auth] Registration failed:", signUpError.message)
+      return null
+    }
+  } else {
+    authUid = signUpData.user?.id ?? null
+  }
+
+  if (!authUid) return null
+
+  // Link auth_uid to profile
+  await supabase
+    .from("profiles")
+    .update({ auth_uid: authUid })
+    .eq("eeid", eeid)
+
+  return fetchProfileByEeidAndOrg(eeid, welcomePhrase)
 }
 
 // ── Google Sign In ────────────────────────────────────────────────────────
@@ -1594,6 +1756,171 @@ export async function updateProfileRole(
   return true
 }
 
+// ── Districts ─────────────────────────────────────────────────────────────
+
+export async function fetchDistrictsForOrg(orgId: string): Promise<Array<{
+  id: string
+  name: string
+  orgId: string
+  districtManagerId: string | null
+  storeCount: number
+}>> {
+  const db = supabase as any
+  const { data, error } = await db
+    .from("districts")
+    .select("id, name, org_id, district_manager_id, stores(id)")
+    .eq("org_id", orgId)
+    .order("name")
+
+  if (error || !data) return []
+
+  return (data as any[]).map((d: any) => ({
+    id: d.id,
+    name: d.name,
+    orgId: d.org_id,
+    districtManagerId: d.district_manager_id,
+    storeCount: d.stores?.length ?? 0,
+  }))
+}
+
+export async function createDistrict(
+  orgId: string,
+  name: string
+): Promise<string | null> {
+  const db = supabase as any
+  const { data, error } = await db
+    .from("districts")
+    .insert({ org_id: orgId, name })
+    .select("id")
+    .maybeSingle()
+
+  if (error) {
+    console.error("createDistrict failed:", error.message)
+    return null
+  }
+  return data?.id ?? null
+}
+
+export async function updateDistrict(
+  districtId: string,
+  updates: { name?: string; districtManagerId?: string | null }
+): Promise<boolean> {
+  const update: Record<string, unknown> = {}
+  if (updates.name !== undefined) update.name = updates.name
+  if (updates.districtManagerId !== undefined) update.district_manager_id = updates.districtManagerId
+
+  const db = supabase as any
+  const { error } = await db
+    .from("districts")
+    .update(update)
+    .eq("id", districtId)
+
+  return !error
+}
+
+export async function deleteDistrict(districtId: string): Promise<boolean> {
+  const db = supabase as any
+  const { error } = await db
+    .from("districts")
+    .delete()
+    .eq("id", districtId)
+
+  return !error
+}
+
+export async function assignStoreToDistrict(
+  storeId: string,
+  districtId: string | null
+): Promise<boolean> {
+  const db = supabase as any
+  const { error } = await db
+    .from("stores")
+    .update({ district_id: districtId })
+    .eq("id", storeId)
+
+  return !error
+}
+
+// ── Password Reset ────────────────────────────────────────────────────────
+
+export async function resetAssociatePassword(
+  authUid: string,
+  newPassword: string
+): Promise<boolean> {
+  const { error } = await (supabase.auth as any).admin.updateUserById(authUid, {
+    password: newPassword,
+  })
+
+  if (error) {
+    console.error("resetAssociatePassword failed:", error.message)
+    return false
+  }
+  return true
+}
+
+export function generateTempPassword(): string {
+  const words = ["Shift", "Floor", "Akyra", "Squad", "Store", "Team", "Work"]
+  const word = words[Math.floor(Math.random() * words.length)]
+  const num = Math.floor(Math.random() * 900) + 100
+  return `${word}${num}!`
+}
+
+// ── 30-Day District Associate View ────────────────────────────────────────
+
+export async function fetchDistrictAssociatesLast30Days(
+  storeId: string,
+  _districtId: string
+): Promise<Array<{
+  associateId: string
+  name: string
+  role: string
+  homeStore: string
+  lastVisit: string
+}>> {
+  const thirtyDaysAgo = new Date()
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+  const cutoff = thirtyDaysAgo.toISOString().split("T")[0]
+
+  const db = supabase as any
+  const { data, error } = await db
+    .from("associate_store_visits")
+    .select(`
+      associate_id,
+      visited_at,
+      associates!associate_id(name, role, store_id, stores!store_id(store_number))
+    `)
+    .eq("store_id", storeId)
+    .gte("visited_at", cutoff)
+    .order("visited_at", { ascending: false })
+
+  if (error || !data) return []
+
+  const seen = new Set<string>()
+  const results: Array<{
+    associateId: string
+    name: string
+    role: string
+    homeStore: string
+    lastVisit: string
+  }> = []
+
+  for (const visit of data as any[]) {
+    if (seen.has(visit.associate_id)) continue
+    seen.add(visit.associate_id)
+
+    const assoc = visit.associates
+    results.push({
+      associateId: visit.associate_id,
+      name: assoc?.name ?? "Unknown",
+      role: assoc?.role ?? "crew",
+      homeStore: assoc?.stores?.store_number ?? "?",
+      lastVisit: visit.visited_at,
+    })
+  }
+
+  return results
+}
+
 // ── Org Management ────────────────────────────────────────────────────────
 
 export async function createOrganization(
@@ -2386,19 +2713,43 @@ export async function calculateAndSaveShiftResults(
 ): Promise<void> {
   if (associateResults.length === 0) return
 
-  // Calculate benchmarks and find kill leader
+  // Fetch assists for each associate this shift
+  const db = supabase as any
+  const { data: assistData } = await db
+    .from("assists")
+    .select("assist_associate_id, original_associate_id")
+    .eq("store_id", storeId)
+    .eq("shift_date", shiftDate)
+    .eq("shift_bucket", shiftBucket)
+
+  const assists = (assistData ?? []) as Array<{
+    assist_associate_id: string
+    original_associate_id: string
+  }>
+
+  // Calculate benchmarks
   const withBenchmarks = associateResults.map(r => {
     const pct = r.tasksTotal > 0 ? r.tasksCompleted / r.tasksTotal : 0
     const benchmark =
       pct >= 0.9 ? "Exceeded" :
       pct >= 0.7 ? "Performed" :
       "Executed"
-    return { ...r, pct, benchmark }
+
+    const assistsGiven = assists.filter(a => a.original_associate_id === r.associateId).length
+    const assistsReceived = assists.filter(a => a.assist_associate_id === r.associateId).length
+
+    return { ...r, pct, benchmark, assistsGiven, assistsReceived }
   })
 
   // Kill leader = highest completion pct
-  const sorted = [...withBenchmarks].sort((a, b) => b.pct - a.pct)
-  const killLeaderId = sorted[0]?.associateId ?? null
+  const sortedByCompletion = [...withBenchmarks].sort((a, b) => b.pct - a.pct)
+  const killLeaderId = sortedByCompletion[0]?.associateId ?? null
+
+  // MVP = most assists given
+  const sortedByAssists = [...withBenchmarks].sort((a, b) => b.assistsGiven - a.assistsGiven)
+  const mvpId = (sortedByAssists[0]?.assistsGiven ?? 0) > 0
+    ? sortedByAssists[0]?.associateId ?? null
+    : null
 
   // Upsert shift results
   const rows = withBenchmarks.map(r => ({
@@ -2411,35 +2762,111 @@ export async function calculateAndSaveShiftResults(
     tasks_total: r.tasksTotal,
     benchmark: r.benchmark,
     burn_cards_earned: r.associateId === killLeaderId ? 1 : 0,
+    squad_cards_earned: r.associateId === mvpId && mvpId !== killLeaderId ? 1 : 0,
     is_kill_leader: r.associateId === killLeaderId,
+    is_mvp: r.associateId === mvpId,
+    assists_given: r.assistsGiven,
+    assists_received: r.assistsReceived,
   }))
 
-  await supabase.from("shift_results").upsert(rows, {
+  await db.from("shift_results").upsert(rows, {
     onConflict: "store_id,shift_bucket,shift_date,associate_id",
   })
 
   // Award burn card to kill leader
   if (killLeaderId) {
-    const { error: rpcError } = await supabase.rpc("increment_burn_cards", { associate_id: killLeaderId })
-    if (rpcError) {
-      // Fallback if RPC doesn't exist yet
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("burn_cards, lifetime_burn_cards")
-        .eq("id", killLeaderId)
-        .maybeSingle()
+    const { data: klProfile } = await supabase
+      .from("profiles")
+      .select("burn_cards, lifetime_burn_cards")
+      .eq("id", killLeaderId)
+      .maybeSingle()
 
-      if (profile) {
-        await supabase
-          .from("profiles")
-          .update({
-            burn_cards: (profile.burn_cards ?? 0) + 1,
-            lifetime_burn_cards: (profile.lifetime_burn_cards ?? 0) + 1,
-          })
-          .eq("id", killLeaderId)
-      }
+    if (klProfile) {
+      await supabase.from("profiles").update({
+        burn_cards: (klProfile.burn_cards ?? 0) + 1,
+        lifetime_burn_cards: (klProfile.lifetime_burn_cards ?? 0) + 1,
+      }).eq("id", killLeaderId)
     }
   }
+
+  // Award squad card to MVP (only if different from kill leader)
+  if (mvpId && mvpId !== killLeaderId) {
+    const { data: mvpProfile } = await (supabase as any)
+      .from("profiles")
+      .select("squad_cards, lifetime_squad_cards")
+      .eq("id", mvpId)
+      .maybeSingle()
+
+    if (mvpProfile) {
+      await (supabase as any).from("profiles").update({
+        squad_cards: (mvpProfile.squad_cards ?? 0) + 1,
+        lifetime_squad_cards: (mvpProfile.lifetime_squad_cards ?? 0) + 1,
+      }).eq("id", mvpId)
+    }
+  }
+}
+
+/**
+ * Get combined spendable cards (burn + squad) for an associate.
+ */
+export async function getAssociateSpendableCards(profileId: string): Promise<{
+  burnCards: number
+  squadCards: number
+  total: number
+}> {
+  const { data } = await (supabase as any)
+    .from("profiles")
+    .select("burn_cards, squad_cards")
+    .eq("id", profileId)
+    .maybeSingle()
+
+  const burnCards = (data as any)?.burn_cards ?? 0
+  const squadCards = (data as any)?.squad_cards ?? 0
+
+  return { burnCards, squadCards, total: burnCards + squadCards }
+}
+
+/**
+ * Spend a card (burn or squad — same mechanic).
+ * Deducts from burn cards first, then squad cards.
+ */
+export async function spendCard(
+  profileId: string,
+  taskId: string,
+  supervisorAssociateId: string,
+  supervisorName: string
+): Promise<boolean> {
+  const cards = await getAssociateSpendableCards(profileId)
+  if (cards.total <= 0) return false
+
+  // Assign task to supervisor
+  const success = await assignTaskToAssociate(
+    taskId,
+    supervisorAssociateId,
+    supervisorName,
+    1
+  )
+  if (!success) return false
+
+  // Deduct from burn first, then squad
+  const { data } = await (supabase as any)
+    .from("profiles")
+    .select("burn_cards, squad_cards")
+    .eq("id", profileId)
+    .maybeSingle()
+
+  if (!data) return false
+
+  const profile = data as any
+  const update: Record<string, number> = {}
+  if ((profile.burn_cards ?? 0) > 0) {
+    update.burn_cards = (profile.burn_cards ?? 0) - 1
+  } else {
+    update.squad_cards = (profile.squad_cards ?? 0) - 1
+  }
+
+  await (supabase as any).from("profiles").update(update).eq("id", profileId)
+  return true
 }
 
 export async function fetchShiftResults(
@@ -2987,4 +3414,703 @@ export async function generateResearchReport(
     inventoryMetrics,
     shiftMetrics,
   }
+}
+
+// ── Store Manager Analytics ───────────────────────────────────────────────
+
+export async function fetchTopPerformers(
+  storeId: string,
+  days: number = 30
+): Promise<Array<{
+  associateId: string
+  associateName: string
+  avgCompletionPct: number
+  totalShifts: number
+  burnCardsEarned: number
+  squadCardsEarned: number
+  killLeaderCount: number
+  mvpCount: number
+}>> {
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - days)
+  const cutoffStr = cutoff.toISOString().split("T")[0]
+
+  const db = supabase as any
+  const { data, error } = await db
+    .from("shift_results")
+    .select(`
+      associate_id,
+      completion_pct,
+      burn_cards_earned,
+      is_kill_leader,
+      associates!associate_id(name)
+    `)
+    .eq("store_id", storeId)
+    .gte("shift_date", cutoffStr)
+
+  if (error || !data) return []
+
+  const grouped: Record<string, any> = {}
+  for (const r of data as any[]) {
+    const id = r.associate_id
+    if (!grouped[id]) {
+      grouped[id] = {
+        associateId: id,
+        associateName: r.associates?.name ?? "Unknown",
+        totalCompletionPct: 0,
+        totalShifts: 0,
+        burnCardsEarned: 0,
+        squadCardsEarned: 0,
+        killLeaderCount: 0,
+        mvpCount: 0,
+      }
+    }
+    grouped[id].totalCompletionPct += r.completion_pct ?? 0
+    grouped[id].totalShifts++
+    grouped[id].burnCardsEarned += r.burn_cards_earned ?? 0
+    grouped[id].squadCardsEarned += r.squad_cards_earned ?? 0
+    if (r.is_kill_leader) grouped[id].killLeaderCount++
+    if (r.is_mvp) grouped[id].mvpCount++
+  }
+
+  return Object.values(grouped)
+    .map((g: any) => ({
+      ...g,
+      avgCompletionPct: g.totalShifts > 0
+        ? Math.round(g.totalCompletionPct / g.totalShifts)
+        : 0,
+    }))
+    .sort((a, b) => b.avgCompletionPct - a.avgCompletionPct)
+}
+
+export async function fetchAccountabilityFeed(
+  storeId: string,
+  limit: number = 20
+): Promise<Array<{
+  id: string
+  type: "fast" | "slow" | "challenge" | "accepted"
+  taskName: string
+  associateName: string
+  supervisorName: string | null
+  deltaPct: number
+  status: string
+  createdAt: string
+}>> {
+  const db = supabase as any
+  const { data, error } = await db
+    .from("task_verifications")
+    .select(`
+      id,
+      trigger_type,
+      delta_pct,
+      status,
+      created_at,
+      challenge_submitted,
+      tasks!task_id(task_name),
+      associates!associate_id(name),
+      supervisor:associates!supervisor_id(name)
+    `)
+    .eq("store_id", storeId)
+    .order("created_at", { ascending: false })
+    .limit(limit)
+
+  if (error || !data) return []
+
+  return (data as any[]).map(v => ({
+    id: v.id,
+    type: v.challenge_submitted ? "challenge" as const :
+          v.status === "resolved_accepted" ? "accepted" as const :
+          v.trigger_type as "fast" | "slow",
+    taskName: v.tasks?.task_name ?? "Unknown",
+    associateName: v.associates?.name ?? "Unknown",
+    supervisorName: v.supervisor?.name ?? null,
+    deltaPct: v.delta_pct,
+    status: v.status,
+    createdAt: v.created_at,
+  }))
+}
+
+export async function fetchStoreMetrics(
+  storeId: string,
+  days: number = 30
+): Promise<{
+  deadCodes: number
+  wasteQuantity: number
+  totalPulled: number
+  wastePercent: number
+  tasksCompleted: number
+  tasksOrphaned: number
+  hoursInTasks: number
+  hoursOrphaned: number
+}> {
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - days)
+  const cutoffStr = cutoff.toISOString().split("T")[0]
+
+  const [pullData, shiftData] = await Promise.all([
+    supabase
+      .from("pull_events")
+      .select("quantity_pulled, waste_quantity, is_verified")
+      .eq("store_id", storeId)
+      .gte("pulled_date", cutoffStr),
+    supabase
+      .from("shift_results")
+      .select("tasks_completed, tasks_orphaned, tasks_total")
+      .eq("store_id", storeId)
+      .gte("shift_date", cutoffStr),
+  ])
+
+  const pulls = pullData.data ?? []
+  const shifts = shiftData.data ?? []
+
+  const deadCodes = pulls.filter(p => p.waste_quantity && p.waste_quantity > 0).length
+  const wasteQuantity = pulls.reduce((s, p) => s + (p.waste_quantity ?? 0), 0)
+  const totalPulled = pulls.reduce((s, p) => s + p.quantity_pulled, 0)
+  const wastePercent = totalPulled > 0 ? Math.round((wasteQuantity / totalPulled) * 100) : 0
+
+  const tasksCompleted = shifts.reduce((s, r) => s + r.tasks_completed, 0)
+  const tasksOrphaned = shifts.reduce((s, r) => s + (r.tasks_orphaned ?? 0), 0)
+
+  return {
+    deadCodes,
+    wasteQuantity,
+    totalPulled,
+    wastePercent,
+    tasksCompleted,
+    tasksOrphaned,
+    hoursInTasks: Math.round(tasksCompleted * 0.25),
+    hoursOrphaned: Math.round(tasksOrphaned * 0.25),
+  }
+}
+
+// ── Ping System ───────────────────────────────────────────────────────────
+
+export async function sendPing(
+  storeId: string,
+  fromAssociateId: string,
+  message: string,
+  pingType: "task_offer" | "general" | "all_hands" | "direct",
+  options?: {
+    toAssociateId?: string
+    targetArchetype?: string
+    taskId?: string
+  }
+): Promise<string | null> {
+  const db = supabase as any
+  const { data, error } = await db
+    .from("pings")
+    .insert({
+      store_id: storeId,
+      from_associate_id: fromAssociateId,
+      to_associate_id: options?.toAssociateId ?? null,
+      target_archetype: options?.targetArchetype ?? null,
+      task_id: options?.taskId ?? null,
+      message,
+      ping_type: pingType,
+    })
+    .select("id")
+    .maybeSingle()
+
+  if (error) {
+    console.error("sendPing failed:", error.message)
+    return null
+  }
+  return data?.id ?? null
+}
+
+export async function fetchActivePingsForAssociate(
+  storeId: string,
+  associateId: string,
+  archetype: string
+): Promise<Array<{
+  id: string
+  message: string
+  pingType: string
+  taskId: string | null
+  fromAssociateId: string
+  fromName: string
+  createdAt: string
+}>> {
+  const db = supabase as any
+  const { data, error } = await db
+    .from("pings")
+    .select(`
+      id, message, ping_type, task_id, from_associate_id, created_at,
+      associates!from_associate_id(name)
+    `)
+    .eq("store_id", storeId)
+    .eq("is_acknowledged", false)
+    .or(`to_associate_id.eq.${associateId},target_archetype.eq.${archetype},ping_type.eq.all_hands`)
+    .order("created_at", { ascending: false })
+
+  if (error || !data) return []
+
+  return (data as any[]).map(p => ({
+    id: p.id,
+    message: p.message,
+    pingType: p.ping_type,
+    taskId: p.task_id,
+    fromAssociateId: p.from_associate_id,
+    fromName: (p as any).associates?.name ?? "Unknown",
+    createdAt: p.created_at,
+  }))
+}
+
+export async function acknowledgePing(
+  pingId: string,
+  acknowledgedByAssociateId: string
+): Promise<boolean> {
+  const db = supabase as any
+  const { error } = await db
+    .from("pings")
+    .update({
+      is_acknowledged: true,
+      acknowledged_by: acknowledgedByAssociateId,
+      acknowledged_at: new Date().toISOString(),
+    })
+    .eq("id", pingId)
+
+  return !error
+}
+
+export async function acceptTaskOffer(
+  pingId: string,
+  taskId: string,
+  acceptingAssociateId: string,
+  acceptingAssociateName: string,
+  originalAssociateId: string,
+  storeId: string,
+  startTime: string
+): Promise<boolean> {
+  // Acknowledge the ping
+  await acknowledgePing(pingId, acceptingAssociateId)
+
+  // Assign the task to the accepting associate
+  await supabase
+    .from("tasks")
+    .update({
+      assigned_to: acceptingAssociateName,
+      assigned_to_associate_id: acceptingAssociateId,
+      queue_position: 1,
+    })
+    .eq("id", taskId)
+
+  // Create assist record
+  const bucket = getShiftBucket(startTime)
+  const db = supabase as any
+  await db.from("assists").insert({
+    store_id: storeId,
+    original_associate_id: originalAssociateId,
+    assist_associate_id: acceptingAssociateId,
+    task_id: taskId,
+    ping_id: pingId,
+    shift_date: new Date().toISOString().split("T")[0],
+    shift_bucket: bucket,
+  })
+
+  return true
+}
+
+// ── Supervisor Personal Metrics ───────────────────────────────────────────
+
+export async function fetchSupervisorPersonalMetrics(
+  storeId: string,
+  _supervisorName: string,
+  days: number = 7
+): Promise<{
+  shiftsWorked: number
+  avgCompletionPct: number
+  tasksCompleted: number
+  tasksOrphaned: number
+  hoursInTasks: number
+  hoursOrphaned: number
+  deadCodesTonight: number
+  killLeaderCount: number
+}> {
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - days)
+  const cutoffStr = cutoff.toISOString().split("T")[0]
+  const today = new Date().toISOString().split("T")[0]
+
+  const [shiftData, codeData] = await Promise.all([
+    supabase
+      .from("shift_results")
+      .select("completion_pct, tasks_completed, tasks_orphaned, is_kill_leader")
+      .eq("store_id", storeId)
+      .gte("shift_date", cutoffStr),
+    supabase
+      .from("pull_events")
+      .select("id")
+      .eq("store_id", storeId)
+      .lte("expires_date", today)
+      .eq("is_verified", false),
+  ])
+
+  const shifts = shiftData.data ?? []
+  const deadCodes = codeData.data?.length ?? 0
+
+  const avgCompletion = shifts.length > 0
+    ? Math.round(shifts.reduce((s, r) => s + (r.completion_pct ?? 0), 0) / shifts.length)
+    : 0
+
+  const tasksCompleted = shifts.reduce((s, r) => s + r.tasks_completed, 0)
+  const tasksOrphaned = shifts.reduce((s, r) => s + (r.tasks_orphaned ?? 0), 0)
+
+  return {
+    shiftsWorked: shifts.length,
+    avgCompletionPct: avgCompletion,
+    tasksCompleted,
+    tasksOrphaned,
+    hoursInTasks: Math.round(tasksCompleted * 0.25),
+    hoursOrphaned: Math.round(tasksOrphaned * 0.25),
+    deadCodesTonight: deadCodes,
+    killLeaderCount: shifts.filter(r => r.is_kill_leader).length,
+  }
+}
+
+// ── Regional Admin ────────────────────────────────────────────────────────
+
+export interface RegionSummary {
+  id: string
+  name: string
+  orgId: string
+  regionalAdminId: string | null
+  districtCount: number
+  storeCount: number
+}
+
+export async function fetchRegionsForOrg(orgId: string): Promise<RegionSummary[]> {
+  const db = supabase as any
+  const { data, error } = await db
+    .from("regions")
+    .select(`
+      id, name, org_id, regional_admin_id,
+      districts(id, stores(id))
+    `)
+    .eq("org_id", orgId)
+    .order("name")
+
+  if (error || !data) return []
+
+  return data.map((r: any) => {
+    const districts = r.districts ?? []
+    const storeCount = districts.reduce(
+      (sum: number, d: any) => sum + (d.stores?.length ?? 0), 0
+    )
+    return {
+      id: r.id,
+      name: r.name,
+      orgId: r.org_id,
+      regionalAdminId: r.regional_admin_id,
+      districtCount: districts.length,
+      storeCount,
+    }
+  })
+}
+
+export async function createRegion(
+  orgId: string,
+  name: string
+): Promise<string | null> {
+  const db = supabase as any
+  const { data, error } = await db
+    .from("regions")
+    .insert({ org_id: orgId, name })
+    .select("id")
+    .maybeSingle()
+
+  if (error) {
+    console.error("createRegion failed:", error.message)
+    return null
+  }
+  return data?.id ?? null
+}
+
+export async function assignRegionalAdmin(
+  regionId: string,
+  profileId: string | null
+): Promise<boolean> {
+  const db = supabase as any
+  const { error } = await db
+    .from("regions")
+    .update({ regional_admin_id: profileId })
+    .eq("id", regionId)
+
+  if (error) {
+    console.error("assignRegionalAdmin failed:", error.message)
+    return false
+  }
+
+  if (profileId) {
+    await db
+      .from("profiles")
+      .update({ role: "regional_admin", role_rank: 6, region_id: regionId })
+      .eq("id", profileId)
+  }
+
+  return true
+}
+
+export async function fetchRegionalMetrics(
+  regionId: string
+): Promise<{
+  totalStores: number
+  avgCompletionPct: number
+  totalDeadCodes: number
+  totalWasteQuantity: number
+  totalTasksCompleted: number
+  totalTasksOrphaned: number
+}> {
+  const db = supabase as any
+  const { data: districts } = await db
+    .from("districts")
+    .select("id, stores(id)")
+    .eq("region_id", regionId)
+
+  const empty = {
+    totalStores: 0,
+    avgCompletionPct: 0,
+    totalDeadCodes: 0,
+    totalWasteQuantity: 0,
+    totalTasksCompleted: 0,
+    totalTasksOrphaned: 0,
+  }
+
+  if (!districts) return empty
+
+  const storeIds = (districts as any[]).flatMap(
+    (d: any) => (d.stores ?? []).map((s: any) => s.id)
+  )
+
+  if (storeIds.length === 0) return empty
+
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - 30)
+  const cutoffStr = cutoff.toISOString().split("T")[0]
+  const today = new Date().toISOString().split("T")[0]
+
+  const [shiftData, pullData] = await Promise.all([
+    supabase
+      .from("shift_results")
+      .select("completion_pct, tasks_completed, tasks_orphaned")
+      .in("store_id", storeIds)
+      .gte("shift_date", cutoffStr),
+    supabase
+      .from("pull_events")
+      .select("waste_quantity")
+      .in("store_id", storeIds)
+      .lte("expires_date", today)
+      .eq("is_verified", false),
+  ])
+
+  const shifts = shiftData.data ?? []
+  const pulls = pullData.data ?? []
+
+  return {
+    totalStores: storeIds.length,
+    avgCompletionPct: shifts.length > 0
+      ? Math.round(shifts.reduce((s, r) => s + (r.completion_pct ?? 0), 0) / shifts.length)
+      : 0,
+    totalDeadCodes: pulls.filter(p => p.waste_quantity && p.waste_quantity > 0).length,
+    totalWasteQuantity: pulls.reduce((s, p) => s + (p.waste_quantity ?? 0), 0),
+    totalTasksCompleted: shifts.reduce((s, r) => s + (r.tasks_completed ?? 0), 0),
+    totalTasksOrphaned: shifts.reduce((s, r) => s + (r.tasks_orphaned ?? 0), 0),
+  }
+}
+
+// ── Respawn Protocol ──────────────────────────────────────────────────────
+
+const RESPAWN_PIN_TTL_SECONDS = 300 // 5 minutes
+
+/**
+ * Generate a device fingerprint for binding the PIN to a device.
+ * Not cryptographically strong — just a basic uniqueness signal.
+ */
+function generateDeviceFingerprint(): string {
+  const ua = navigator.userAgent
+  const screen = `${window.screen.width}x${window.screen.height}`
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+  return btoa(`${ua}|${screen}|${tz}`).slice(0, 32)
+}
+
+/**
+ * Generate a simple hash for the PIN (non-cryptographic, for display matching).
+ * Real security comes from the TTL + single-use + supervisor auth.
+ */
+function hashPin(pin: string): string {
+  let hash = 0
+  for (let i = 0; i < pin.length; i++) {
+    hash = ((hash << 5) - hash) + pin.charCodeAt(i)
+    hash |= 0
+  }
+  return Math.abs(hash).toString(36).toUpperCase()
+}
+
+/**
+ * Request a Respawn PIN for a locked-out associate.
+ * Called from the associate's device when all other auth methods fail.
+ */
+export async function requestRespawnPin(
+  eeid: string,
+  welcomePhrase: string
+): Promise<{
+  pin: string
+  channel: string
+  expiresAt: string
+} | null> {
+  const org = await validateWelcomeCode(welcomePhrase)
+  if (!org) return null
+
+  const profile = await fetchProfileByEeidAndOrg(eeid, welcomePhrase)
+  if (!profile) return null
+
+  // Only T1/T2/T3 can use Respawn Protocol
+  if ((profile.role_rank ?? 0) > 3) {
+    console.log("[Respawn] Protocol only available for T1-T3")
+    return null
+  }
+
+  const pin = Math.floor(100000 + Math.random() * 900000).toString()
+  const pinHash = hashPin(pin)
+  const channel = `respawn-${pinHash}-${Date.now()}`
+  const expiresAt = new Date(Date.now() + RESPAWN_PIN_TTL_SECONDS * 1000).toISOString()
+  const fingerprint = generateDeviceFingerprint()
+
+  const storeId = profile.current_store_id
+  if (!storeId) return null
+
+  const db = supabase as any
+  const { error } = await db
+    .from("respawn_pins")
+    .insert({
+      store_id: storeId,
+      associate_eeid: eeid,
+      associate_org_id: org.orgId,
+      pin_hash: pinHash,
+      pin_channel: channel,
+      expires_at: expiresAt,
+      device_fingerprint: fingerprint,
+    })
+
+  if (error) {
+    console.error("[Respawn] Failed to create PIN:", error.message)
+    return null
+  }
+
+  return { pin, channel, expiresAt }
+}
+
+/**
+ * Supervisor looks up a Respawn PIN to see who needs help.
+ * Returns associate identity if PIN is valid.
+ */
+export async function lookupRespawnPin(
+  pin: string
+): Promise<{
+  channel: string
+  associateEeid: string
+  associateName: string
+  associateRole: string
+  storeId: string
+  expiresAt: string
+} | null> {
+  const pinHash = hashPin(pin)
+
+  const db = supabase as any
+  const { data, error } = await db
+    .from("respawn_pins")
+    .select("*")
+    .eq("pin_hash", pinHash)
+    .eq("is_used", false)
+    .gt("expires_at", new Date().toISOString())
+    .maybeSingle()
+
+  if (error || !data) {
+    console.log("[Respawn] PIN not found or expired")
+    return null
+  }
+
+  const { data: profileData } = await supabase
+    .from("profiles")
+    .select("display_name, role, role_rank")
+    .eq("eeid", data.associate_eeid)
+    .eq("org_id", data.associate_org_id)
+    .maybeSingle()
+
+  if (!profileData) return null
+
+  return {
+    channel: data.pin_channel,
+    associateEeid: data.associate_eeid,
+    associateName: profileData.display_name ?? "Unknown",
+    associateRole: profileData.role ?? "crew",
+    storeId: data.store_id,
+    expiresAt: data.expires_at,
+  }
+}
+
+/**
+ * Supervisor authorizes the respawn.
+ * Broadcasts to the associate's Realtime channel.
+ */
+export async function authorizeRespawn(
+  pin: string,
+  supervisorAssociateId: string
+): Promise<boolean> {
+  const pinHash = hashPin(pin)
+
+  const db = supabase as any
+  const { data, error } = await db
+    .from("respawn_pins")
+    .update({
+      authorized_by_associate_id: supervisorAssociateId,
+      authorized_at: new Date().toISOString(),
+    })
+    .eq("pin_hash", pinHash)
+    .eq("is_used", false)
+    .gt("expires_at", new Date().toISOString())
+    .select("pin_channel")
+    .maybeSingle()
+
+  if (error || !data) {
+    console.error("[Respawn] Authorization failed:", error?.message)
+    return false
+  }
+
+  await supabase.channel(data.pin_channel).send({
+    type: "broadcast",
+    event: "authorized",
+    payload: { supervisorId: supervisorAssociateId },
+  })
+
+  console.log("[Respawn] Authorization broadcast sent")
+  return true
+}
+
+/**
+ * Complete the respawn — called after associate sets new password + passkey.
+ * Updates the auth credentials and marks the PIN as used.
+ */
+export async function completeRespawn(
+  eeid: string,
+  welcomePhrase: string,
+  newPassword: string,
+  channel: string
+): Promise<boolean> {
+  const profile = await registerAuthForOrg(eeid, newPassword, welcomePhrase)
+  if (!profile) return false
+
+  const db = supabase as any
+  await db
+    .from("respawn_pins")
+    .update({ is_used: true })
+    .eq("pin_channel", channel)
+
+  await supabase.channel(channel).send({
+    type: "broadcast",
+    event: "respawned",
+    payload: { eeid },
+  })
+
+  return true
 }

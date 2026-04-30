@@ -2,7 +2,7 @@ import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAssociateTasks, useEquipmentIssues, useCodeCheck } from "../../hooks"
 import { useAuth } from "../../context"
-import { createAssistanceRequest, submitAssociatePhoto, logSlowCompletionReason, getAssociateBurnCards, useBurnCard } from "../../lib"
+import { createAssistanceRequest, submitAssociatePhoto, logSlowCompletionReason, getAssociateSpendableCards, spendCard } from "../../lib"
 import { TaskCard } from "../../components/TaskCard"
 import { FlipChecklist } from "../../components/FlipChecklist"
 import { PullList } from "../../components/PullList"
@@ -10,7 +10,9 @@ import { LoadingSpinner } from "../../components/LoadingSpinner"
 import { CodeCheckPanel } from "../../components/CodeCheckPanel"
 import { WhosWorkingPanel } from "../../components/WhosWorkingPanel"
 import { RadialMenu } from "../../components/gamification/RadialMenu"
+import { ArchetypeOfferModal } from "../../components/gamification/ArchetypeOfferModal"
 import { SOPViewer } from "../../components/gamification/SOPViewer"
+import { PingBanner } from "../../components/PingBanner"
 import { PhotoCapture } from "../../components/gamification/PhotoCapture"
 import { SlowReasonModal } from "../../components/gamification/SlowReasonModal"
 import { BurnCardModal } from "../../components/gamification/BurnCardModal"
@@ -95,17 +97,18 @@ export function AssociateTaskView({
     position: { x: number; y: number }
   } | null>(null)
   const [sopTask, setSopTask] = useState<Task | null>(null)
-  const [burnCards, setBurnCards] = useState(0)
+  const [cards, setCards] = useState({ burnCards: 0, squadCards: 0, total: 0 })
   const [burnCardTask, setBurnCardTask] = useState<{ taskId: string; taskName: string } | null>(null)
+  const [offeringTask, setOfferingTask] = useState<{ taskId: string; taskName: string } | null>(null)
 
   useEffect(() => {
     if (associate.profile_id) {
-      getAssociateBurnCards(associate.profile_id).then(setBurnCards)
+      getAssociateSpendableCards(associate.profile_id).then(setCards)
     }
   }, [associate.profile_id])
 
   async function handleRadialAction(
-    direction: "up" | "down" | "left" | "right" | "up-left",
+    direction: "up" | "down" | "left" | "right" | "up-left" | "left-hold",
     taskId: string
   ) {
     const task = [...myTasks, ...archetypeTasks].find(t => t.id === taskId)
@@ -113,6 +116,9 @@ export function AssociateTaskView({
     switch (direction) {
       case "left":
         completeTask(taskId)
+        break
+      case "left-hold":
+        if (task) setOfferingTask({ taskId, taskName: task.task_name })
         break
       case "up": {
         const requestId = await createAssistanceRequest(
@@ -133,7 +139,7 @@ export function AssociateTaskView({
         console.log("Report issue for task", taskId)
         break
       case "up-left":
-        if (burnCards > 0) {
+        if (cards.total > 0) {
           const burnTask = [...myTasks, ...archetypeTasks].find(t => t.id === taskId)
           if (burnTask) setBurnCardTask({ taskId, taskName: burnTask.task_name })
         }
@@ -175,6 +181,14 @@ export function AssociateTaskView({
 
   return (
     <div className="min-h-screen bg-akyra-black">
+      <PingBanner
+        storeId={associate.store_id}
+        associateId={associate.id}
+        associateName={associate.name}
+        archetype={station}
+        defaultStartTime={associate.default_start_time}
+      />
+
       {/* Header */}
       <header className="flex items-center justify-between px-6 py-4 border-b border-akyra-border">
         <div>
@@ -375,7 +389,7 @@ export function AssociateTaskView({
         <RadialMenu
           taskName={radialMenu.taskName}
           position={radialMenu.position}
-          hasBurnCard={burnCards > 0}
+          hasBurnCard={cards.total > 0}
           onSelect={(direction) => {
             handleRadialAction(direction, radialMenu.taskId)
             setRadialMenu(null)
@@ -430,22 +444,43 @@ export function AssociateTaskView({
         />
       )}
 
+      {offeringTask && (
+        <ArchetypeOfferModal
+          taskId={offeringTask.taskId}
+          taskName={offeringTask.taskName}
+          storeId={associate.store_id}
+          fromAssociateId={associate.id}
+          fromAssociateName={associate.name}
+          orgStations={orgStations.map(s => s.name)}
+          onDismiss={() => setOfferingTask(null)}
+          onOffered={() => {
+            setOfferingTask(null)
+            refetch()
+          }}
+        />
+      )}
+
       {/* Burn Card Modal */}
       {burnCardTask && (
         <BurnCardModal
           taskName={burnCardTask.taskName}
-          burnCardsRemaining={burnCards}
+          burnCards={cards.burnCards}
+          squadCards={cards.squadCards}
+          totalCards={cards.total}
           onConfirm={async () => {
-            // Get supervisor from active shifts
-            // For now use first MOD on shift — GX3 has active shifts data
-            const success = await useBurnCard(
+            const success = await spendCard(
               associate.profile_id ?? "",
               burnCardTask.taskId,
-              "supervisor-id-placeholder", // TODO: resolve real supervisor ID
+              "supervisor-id-placeholder",
               "Your MOD"
             )
             if (success) {
-              setBurnCards(prev => prev - 1)
+              setCards(prev => ({
+                ...prev,
+                total: prev.total - 1,
+                burnCards: prev.burnCards > 0 ? prev.burnCards - 1 : prev.burnCards,
+                squadCards: prev.burnCards > 0 ? prev.squadCards : prev.squadCards - 1,
+              }))
               refetch()
             }
           }}
