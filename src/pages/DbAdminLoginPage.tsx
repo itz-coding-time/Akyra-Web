@@ -1,11 +1,15 @@
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { supabase } from "../lib/supabase"
+import { consumeOAuthRedirectSession, supabase } from "../lib/supabase"
 import { AkyraLogo } from "../components/AkyraLogo"
 import { LoadingSpinner } from "../components/LoadingSpinner"
 import { useAuth } from "../context"
 
 const DB_ADMIN_EMAIL = import.meta.env.VITE_DB_ADMIN_EMAIL
+
+function normalizeEmail(email: string | null | undefined) {
+  return email?.trim().toLowerCase() ?? ""
+}
 
 export function DbAdminLoginPage() {
   const navigate = useNavigate()
@@ -17,20 +21,9 @@ export function DbAdminLoginPage() {
   useEffect(() => {
     async function checkSession() {
       // Handle PKCE flow — Supabase returns ?code= in URL
-      const params = new URLSearchParams(window.location.search)
-      const code = params.get("code")
-      console.log("[dbad] DB_ADMIN_EMAIL:", DB_ADMIN_EMAIL)
-      console.log("[dbad] code param:", code)
-      if (code) {
-        await supabase.auth.exchangeCodeForSession(code)
-      }
-
-      // Small delay to allow Supabase to parse hash fragment
-      // if implicit flow was used instead of PKCE
-      await new Promise(resolve => setTimeout(resolve, 200))
+      await consumeOAuthRedirectSession()
 
       const { data: { session } } = await supabase.auth.getSession()
-      console.log("[dbad] session email:", session?.user?.email)
 
       if (!session) {
         // No session — show the login button
@@ -38,15 +31,19 @@ export function DbAdminLoginPage() {
         return
       }
 
-      // Case-insensitive email comparison
-      if (
-        DB_ADMIN_EMAIL &&
-        session.user.email?.toLowerCase() === DB_ADMIN_EMAIL.toLowerCase()
-      ) {
+      const configuredAdminEmail = normalizeEmail(DB_ADMIN_EMAIL)
+      const signedInEmail = normalizeEmail(session.user.email)
+
+      if (configuredAdminEmail && signedInEmail === configuredAdminEmail) {
         // Sync session with AuthContext BEFORE navigating
         // This ensures ProtectedRoute sees an authenticated state
-        await resolveSession()
-        navigate("/app/dashboard", { replace: true })
+        const profile = await resolveSession()
+        if (profile?.role === "db_admin" && (profile.role_rank ?? 0) >= 8) {
+          navigate("/app/dashboard", { replace: true })
+        } else {
+          await supabase.auth.signOut()
+          navigate("/", { replace: true })
+        }
       } else {
         // Wrong Google account — sign out silently, return to home
         await supabase.auth.signOut()

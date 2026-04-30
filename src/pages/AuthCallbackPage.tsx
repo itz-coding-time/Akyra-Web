@@ -4,7 +4,7 @@ import { handleGoogleCallback } from "../lib"
 import { useAuth } from "../context"
 import { AkyraLogo } from "../components/AkyraLogo"
 import { LoadingSpinner } from "../components/LoadingSpinner"
-import { supabase } from "../lib/supabase"
+import { consumeOAuthRedirectSession, supabase } from "../lib/supabase"
 
 export function AuthCallbackPage() {
   const navigate = useNavigate()
@@ -23,6 +23,8 @@ export function AuthCallbackPage() {
 
       const eeid = sessionStorage.getItem("pending_google_eeid")
       sessionStorage.removeItem("pending_google_eeid")
+
+      await consumeOAuthRedirectSession()
 
       const { data: { session } } = await supabase.auth.getSession()
 
