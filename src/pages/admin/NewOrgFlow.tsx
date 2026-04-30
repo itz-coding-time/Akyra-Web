@@ -56,8 +56,8 @@ export function NewOrgFlow({ onComplete, onCancel }: NewOrgFlowProps) {
 
       console.log("createOrganization result:", result)
 
-      if (!result) {
-        setError("Failed to create organization. The welcome phrase may already be taken.")
+      if ("error" in result) {
+        setError(result.error)
         setIsLoading(false)
         return
       }
@@ -66,7 +66,7 @@ export function NewOrgFlow({ onComplete, onCancel }: NewOrgFlowProps) {
       setStep("store-details")
     } catch (err) {
       console.error("createOrganization threw:", err)
-      setError("An unexpected error occurred. Check the console.")
+      setError(err instanceof Error ? err.message : "An unexpected error occurred. Check the console.")
     }
 
     setIsLoading(false)

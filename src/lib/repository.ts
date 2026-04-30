@@ -1928,7 +1928,7 @@ export async function createOrganization(
   brandName: string,
   brandColor: string,
   welcomePhrase: string
-): Promise<{ orgId: string; licenseId: string } | null> {
+): Promise<{ orgId: string; licenseId: string } | { error: string }> {
   console.log("[createOrganization] Starting:", { name, brandName, welcomePhrase })
 
   // Step 1: Create org
@@ -1944,7 +1944,7 @@ export async function createOrganization(
 
   if (orgError || !org) {
     console.error("[createOrganization] Org insert failed:", orgError?.message)
-    return null
+    return { error: orgError?.message ?? "Organization insert failed." }
   }
 
   console.log("[createOrganization] Org created:", org.id)
@@ -1964,7 +1964,7 @@ export async function createOrganization(
     console.error("[createOrganization] License insert failed:", licenseError?.message)
     // Clean up the org we just created
     await supabase.from("organizations").delete().eq("id", org.id)
-    return null
+    return { error: licenseError?.message ?? "License insert failed." }
   }
 
   console.log("[createOrganization] License created:", license.id)
@@ -2936,42 +2936,126 @@ export function getShiftBucket(timeStr: string): "6a-2p" | "2p-10p" | "10p-6a" {
 export async function seedAssociatesForStore(
   storeId: string,
   associates: StoreConfigAssociate[]
-): Promise<{ success: number; failed: number }> {
+): Promise<{ success: number; failed: number; errors?: string[] }> {
   let success = 0
   let failed = 0
+  const errors: string[] = []
 
   const ROLE_RANK: Record<string, number> = {
     crew: 1, supervisor: 2, assistant_manager: 3,
     store_manager: 4, district_admin: 5, org_admin: 6, db_admin: 7,
   }
 
+  const { data: store, error: storeError } = await supabase
+    .from("stores")
+    .select("org_id")
+    .eq("id", storeId)
+    .maybeSingle()
+
+  if (storeError || !store) {
+    return {
+      success: 0,
+      failed: associates.length,
+      errors: [storeError?.message ?? "Store not found for associate seed."],
+    }
+  }
+
   for (const assoc of associates) {
+    const eeid = assoc.eeid?.trim()
+    const name = assoc.name?.trim()
+    const role = assoc.role || "crew"
+    const roleRank = ROLE_RANK[role] ?? 1
+
+    if (!eeid || !name) {
+      failed++
+      errors.push(`Skipped associate with missing ${!eeid ? "EEID" : "name"}.`)
+      continue
+    }
+
+    const { data: existingProfile, error: profileLookupError } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("eeid", eeid)
+      .eq("org_id", store.org_id)
+      .maybeSingle()
+
+    if (profileLookupError) {
+      failed++
+      errors.push(`${name}: ${profileLookupError.message}`)
+      continue
+    }
+
+    let profileId = existingProfile?.id ?? null
+
+    if (profileId) {
+      const { error: profileUpdateError } = await supabase
+        .from("profiles")
+        .update({
+          display_name: name,
+          role,
+          role_rank: roleRank,
+          current_store_id: storeId,
+        })
+        .eq("id", profileId)
+
+      if (profileUpdateError) {
+        failed++
+        errors.push(`${name}: ${profileUpdateError.message}`)
+        continue
+      }
+    } else {
+      profileId = crypto.randomUUID()
+      const { error: profileInsertError } = await supabase
+        .from("profiles")
+        .insert({
+          id: profileId,
+          eeid,
+          display_name: name,
+          role,
+          role_rank: roleRank,
+          org_id: store.org_id,
+          current_store_id: storeId,
+        })
+
+      if (profileInsertError) {
+        failed++
+        errors.push(`${name}: ${profileInsertError.message}`)
+        continue
+      }
+    }
+
     const { error } = await supabase
       .from("associates")
       .upsert({
         store_id: storeId,
-        name: assoc.name,
-        role: assoc.role,
-        role_rank: ROLE_RANK[assoc.role] ?? 1,
+        profile_id: profileId,
+        name,
+        role,
+        role_rank: roleRank,
         current_archetype: "Float",
         scheduled_days: "",
         default_start_time: assoc.default_start_time,
         default_end_time: assoc.default_end_time,
       }, { onConflict: "store_id,name" })
 
-    if (error) failed++
-    else success++
+    if (error) {
+      failed++
+      errors.push(`${name}: ${error.message}`)
+    } else {
+      success++
+    }
   }
 
-  return { success, failed }
+  return { success, failed, errors: errors.length ? errors : undefined }
 }
 
 export async function seedTasksForStore(
   storeId: string,
   tasks: StoreConfigTask[]
-): Promise<{ success: number; failed: number }> {
+): Promise<{ success: number; failed: number; errors?: string[] }> {
   // Clear existing tasks first
-  await supabase.from("tasks").delete().eq("store_id", storeId)
+  const { error: deleteError } = await supabase.from("tasks").delete().eq("store_id", storeId)
+  if (deleteError) return { success: 0, failed: tasks.length, errors: [deleteError.message] }
 
   const { error } = await supabase.from("tasks").insert(
     tasks.map(t => ({
@@ -2989,15 +3073,16 @@ export async function seedTasksForStore(
     }))
   )
 
-  if (error) return { success: 0, failed: tasks.length }
+  if (error) return { success: 0, failed: tasks.length, errors: [error.message] }
   return { success: tasks.length, failed: 0 }
 }
 
 export async function seedInventoryForStore(
   storeId: string,
   items: StoreConfigInventoryItem[]
-): Promise<{ success: number; failed: number }> {
-  await supabase.from("inventory_items").delete().eq("store_id", storeId)
+): Promise<{ success: number; failed: number; errors?: string[] }> {
+  const { error: deleteError } = await supabase.from("inventory_items").delete().eq("store_id", storeId)
+  if (deleteError) return { success: 0, failed: items.length, errors: [deleteError.message] }
 
   const { error } = await supabase.from("inventory_items").insert(
     items.map(i => ({
@@ -3012,15 +3097,16 @@ export async function seedInventoryForStore(
     }))
   )
 
-  if (error) return { success: 0, failed: items.length }
+  if (error) return { success: 0, failed: items.length, errors: [error.message] }
   return { success: items.length, failed: 0 }
 }
 
 export async function seedTableItemsForStore(
   storeId: string,
   items: StoreConfigTableItem[]
-): Promise<{ success: number; failed: number }> {
-  await supabase.from("table_items").delete().eq("store_id", storeId)
+): Promise<{ success: number; failed: number; errors?: string[] }> {
+  const { error: deleteError } = await supabase.from("table_items").delete().eq("store_id", storeId)
+  if (deleteError) return { success: 0, failed: items.length, errors: [deleteError.message] }
 
   const { error } = await supabase.from("table_items").insert(
     items.map(i => ({
@@ -3031,7 +3117,7 @@ export async function seedTableItemsForStore(
     }))
   )
 
-  if (error) return { success: 0, failed: items.length }
+  if (error) return { success: 0, failed: items.length, errors: [error.message] }
   return { success: items.length, failed: 0 }
 }
 
