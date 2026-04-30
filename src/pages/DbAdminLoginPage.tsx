@@ -3,27 +3,28 @@ import { useNavigate } from "react-router-dom"
 import { supabase } from "../lib/supabase"
 import { AkyraLogo } from "../components/AkyraLogo"
 import { LoadingSpinner } from "../components/LoadingSpinner"
+import { useAuth } from "../context"
 
-const DB_ADMIN_EMAIL = "therealbrancase@gmail.com"
+const DB_ADMIN_EMAIL = import.meta.env.VITE_DB_ADMIN_EMAIL
 
 export function DbAdminLoginPage() {
   const navigate = useNavigate()
+  const { resolveSession } = useAuth()
   const [isLoading, setIsLoading] = useState(false)
   const [isChecking, setIsChecking] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     async function checkSession() {
-      // If Supabase used PKCE flow, the URL will contain ?code=...
-      // Exchange it for a session before calling getSession()
+      // Handle PKCE flow — Supabase returns ?code= in URL
       const params = new URLSearchParams(window.location.search)
       const code = params.get("code")
       if (code) {
         await supabase.auth.exchangeCodeForSession(code)
       }
 
-      // Small delay to allow Supabase to parse a hash fragment (#access_token=...)
-      // if the implicit flow was used instead of PKCE
+      // Small delay to allow Supabase to parse hash fragment
+      // if implicit flow was used instead of PKCE
       await new Promise(resolve => setTimeout(resolve, 200))
 
       const { data: { session } } = await supabase.auth.getSession()
@@ -34,17 +35,24 @@ export function DbAdminLoginPage() {
         return
       }
 
-      if (session.user.email === DB_ADMIN_EMAIL) {
+      // Case-insensitive email comparison
+      if (
+        DB_ADMIN_EMAIL &&
+        session.user.email?.toLowerCase() === DB_ADMIN_EMAIL.toLowerCase()
+      ) {
+        // Sync session with AuthContext BEFORE navigating
+        // This ensures ProtectedRoute sees an authenticated state
+        await resolveSession()
         navigate("/app/dashboard", { replace: true })
       } else {
-        // Wrong Google account — sign out silently and return to home
+        // Wrong Google account — sign out silently, return to home
         await supabase.auth.signOut()
         navigate("/", { replace: true })
       }
     }
 
     checkSession()
-  }, [navigate])
+  }, [navigate, resolveSession])
 
   async function handleGoogleSignIn() {
     setIsLoading(true)
@@ -65,8 +73,8 @@ export function DbAdminLoginPage() {
       setError("Sign in failed. Please try again.")
       setIsLoading(false)
     }
-    // If no error — browser navigates to Google, then back to /app/login/dbad
-    // The mount effect above will detect the session on return
+    // No error — browser navigates to Google, then back to /app/login/dbad
+    // The mount effect above detects the session on return
   }
 
   if (isChecking) {
