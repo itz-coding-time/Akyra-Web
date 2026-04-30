@@ -19,6 +19,8 @@ export function DbAdminLoginPage() {
       // Handle PKCE flow — Supabase returns ?code= in URL
       const params = new URLSearchParams(window.location.search)
       const code = params.get("code")
+      console.log("[dbad] DB_ADMIN_EMAIL:", DB_ADMIN_EMAIL)
+      console.log("[dbad] code param:", code)
       if (code) {
         await supabase.auth.exchangeCodeForSession(code)
       }
@@ -28,6 +30,7 @@ export function DbAdminLoginPage() {
       await new Promise(resolve => setTimeout(resolve, 200))
 
       const { data: { session } } = await supabase.auth.getSession()
+      console.log("[dbad] session email:", session?.user?.email)
 
       if (!session) {
         // No session — show the login button
