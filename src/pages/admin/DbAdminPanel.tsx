@@ -9,6 +9,8 @@ import {
   getRoleDisplayName,
   fetchRegionsForOrg,
   createRegion,
+  createStore,
+  deleteProfileAndRosterEntry,
   type OrgSummary,
   type StoreSummary,
   type RegionSummary,
@@ -24,7 +26,7 @@ import { PasswordResetModal } from "../../components/PasswordResetModal"
 import { AkyraLogo } from "../../components/AkyraLogo"
 import { useAuth } from "../../context"
 import { useNavigate } from "react-router-dom"
-import { ChevronRight, Building2, Users, Plus } from "lucide-react"
+import { ChevronRight, Building2, Users, Plus, Trash2 } from "lucide-react"
 import { Store } from "lucide-react"
 import type { Profile } from "../../types"
 
@@ -79,6 +81,12 @@ export function DbAdminPanel() {
   const [newRegionName, setNewRegionName] = useState("")
   const [showAddRegion, setShowAddRegion] = useState(false)
   const [isCreatingRegion, setIsCreatingRegion] = useState(false)
+  const [showAddStore, setShowAddStore] = useState(false)
+  const [newStoreNumber, setNewStoreNumber] = useState("")
+  const [newStoreTimezone, setNewStoreTimezone] = useState("America/New_York")
+  const [isCreatingStore, setIsCreatingStore] = useState(false)
+  const [storeError, setStoreError] = useState<string | null>(null)
+  const [isDeletingProfile, setIsDeletingProfile] = useState(false)
 
   useEffect(() => {
     setIsLoading(true)
@@ -129,6 +137,40 @@ export function DbAdminPanel() {
       setEditingProfile(null)
     }
     setIsUpdating(false)
+  }
+
+  async function handleCreateStore() {
+    if (view.level !== "stores" || !newStoreNumber.trim()) return
+    setIsCreatingStore(true)
+    setStoreError(null)
+
+    const id = await createStore(view.org.id, newStoreNumber.trim(), newStoreTimezone)
+
+    if (id) {
+      const updated = await fetchStoresForOrg(view.org.id)
+      const filtered = view.district
+        ? updated.filter(s => (s as any).districtId === view.district?.id)
+        : updated
+      setStores(filtered)
+      setNewStoreNumber("")
+      setNewStoreTimezone("America/New_York")
+      setShowAddStore(false)
+    } else {
+      setStoreError("Store could not be created. Check DB permissions or duplicate store number.")
+    }
+
+    setIsCreatingStore(false)
+  }
+
+  async function handleDeleteProfile(profile: Profile) {
+    if (!window.confirm(`Delete ${profile.display_name} and their roster entry?`)) return
+    setIsDeletingProfile(true)
+    const success = await deleteProfileAndRosterEntry(profile)
+    if (success) {
+      setProfiles(prev => prev.filter(p => p.id !== profile.id))
+      setEditingProfile(null)
+    }
+    setIsDeletingProfile(false)
   }
 
   async function handleSignOut() {
@@ -234,6 +276,11 @@ export function DbAdminPanel() {
                       <span className="text-xs font-mono text-akyra-secondary">
                         {org.associateCount} associates
                       </span>
+                      {org.welcomePhrase && (
+                        <span className="text-xs font-mono text-white/70">
+                          Code {org.welcomePhrase}
+                        </span>
+                      )}
                       {org.licenseStatus && (
                         <span className={`text-[10px] font-mono uppercase tracking-widest px-1.5 py-0.5 rounded border ${
                           org.licenseStatus === "active"
@@ -371,56 +418,108 @@ export function DbAdminPanel() {
             )}
 
             {/* Stores list */}
-            {view.level === "stores" && stores.map(store => (
-              <div
-                key={store.id}
-                className="w-full bg-akyra-surface border border-akyra-border rounded-xl p-4 flex items-center justify-between hover:border-white/40 transition-colors cursor-pointer"
-                onClick={() => setView({ level: "profiles", org: view.org, store })}
-              >
-                <div className="flex items-center gap-3">
-                  <Store className="w-5 h-5 text-akyra-secondary" />
-                  <div className="text-left">
-                    <p className="font-semibold text-white">Store {store.storeNumber}</p>
-                    <div className="flex items-center gap-3 mt-0.5">
-                      <span className="text-xs font-mono text-akyra-secondary">
-                        {store.associateCount} associates
-                      </span>
-                      <span className="text-xs font-mono text-akyra-secondary">
-                        {store.profileCount} registered
-                      </span>
-                      <span className={`text-[10px] font-mono uppercase tracking-widest px-1.5 py-0.5 rounded border ${
-                        store.billingStatus === "active"
-                          ? "border-white/20 text-white"
-                          : "border-akyra-red/40 text-akyra-red"
-                      }`}>
-                        {store.billingStatus}
-                      </span>
+            {view.level === "stores" && (
+              <>
+                {stores.map(store => (
+                  <div
+                    key={store.id}
+                    className="w-full bg-akyra-surface border border-akyra-border rounded-xl p-4 flex items-center justify-between hover:border-white/40 transition-colors cursor-pointer"
+                    onClick={() => setView({ level: "profiles", org: view.org, store })}
+                  >
+                    <div className="flex items-center gap-3">
+                      <Store className="w-5 h-5 text-akyra-secondary" />
+                      <div className="text-left">
+                        <p className="font-semibold text-white">Store {store.storeNumber}</p>
+                        <div className="flex items-center gap-3 mt-0.5">
+                          <span className="text-xs font-mono text-akyra-secondary">
+                            {store.associateCount} associates
+                          </span>
+                          <span className="text-xs font-mono text-akyra-secondary">
+                            {store.profileCount} registered
+                          </span>
+                          <span className={`text-[10px] font-mono uppercase tracking-widest px-1.5 py-0.5 rounded border ${
+                            store.billingStatus === "active"
+                              ? "border-white/20 text-white"
+                              : "border-akyra-red/40 text-akyra-red"
+                          }`}>
+                            {store.billingStatus}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={e => {
+                          e.stopPropagation()
+                          setSetupStore({ id: store.id, name: `Store ${store.storeNumber}` })
+                        }}
+                        className="text-[10px] font-mono uppercase tracking-widest text-akyra-secondary hover:text-white transition-colors border border-akyra-border rounded px-2 py-1"
+                      >
+                        Setup
+                      </button>
+                      <button
+                        onClick={e => {
+                          e.stopPropagation()
+                          setReportStore({ id: store.id, name: `Store ${store.storeNumber}` })
+                        }}
+                        className="text-[10px] font-mono uppercase tracking-widest text-akyra-secondary hover:text-white transition-colors border border-akyra-border rounded px-2 py-1"
+                      >
+                        Report
+                      </button>
+                      <ChevronRight className="w-4 h-4 text-akyra-secondary" />
                     </div>
                   </div>
-                </div>
-                <div className="flex items-center gap-3">
+                ))}
+
+                {showAddStore ? (
+                  <div className="bg-akyra-surface border border-white/20 rounded-xl p-4 space-y-3">
+                    <p className="text-xs font-mono uppercase tracking-widest text-akyra-secondary">
+                      New Store
+                    </p>
+                    <input
+                      value={newStoreNumber}
+                      onChange={e => setNewStoreNumber(e.target.value)}
+                      placeholder="Store number"
+                      autoFocus
+                      className="w-full bg-akyra-black border border-akyra-border rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-white"
+                    />
+                    <select
+                      value={newStoreTimezone}
+                      onChange={e => setNewStoreTimezone(e.target.value)}
+                      className="w-full bg-akyra-black border border-akyra-border rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-white"
+                    >
+                      {["America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles", "America/Phoenix", "America/Anchorage", "Pacific/Honolulu"].map(tz => (
+                        <option key={tz} value={tz}>{tz}</option>
+                      ))}
+                    </select>
+                    {storeError && <p className="text-xs font-mono text-akyra-red">{storeError}</p>}
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => { setShowAddStore(false); setNewStoreNumber(""); setStoreError(null) }}
+                        className="flex-1 py-2 rounded-lg border border-akyra-border text-akyra-secondary text-sm"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleCreateStore}
+                        disabled={!newStoreNumber.trim() || isCreatingStore}
+                        className="flex-1 py-2 rounded-lg bg-white text-black text-sm font-bold disabled:opacity-50"
+                      >
+                        {isCreatingStore ? "Creating..." : "Create"}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
                   <button
-                    onClick={e => {
-                      e.stopPropagation()
-                      setSetupStore({ id: store.id, name: `Store ${store.storeNumber}` })
-                    }}
-                    className="text-[10px] font-mono uppercase tracking-widest text-akyra-secondary hover:text-white transition-colors border border-akyra-border rounded px-2 py-1"
+                    onClick={() => setShowAddStore(true)}
+                    className="w-full py-3 rounded-xl border border-dashed border-akyra-border text-akyra-secondary hover:border-white/40 hover:text-white transition-colors flex items-center justify-center gap-2 text-sm"
                   >
-                    Setup
+                    <Plus className="w-4 h-4" />
+                    Add Store
                   </button>
-                  <button
-                    onClick={e => {
-                      e.stopPropagation()
-                      setReportStore({ id: store.id, name: `Store ${store.storeNumber}` })
-                    }}
-                    className="text-[10px] font-mono uppercase tracking-widest text-akyra-secondary hover:text-white transition-colors border border-akyra-border rounded px-2 py-1"
-                  >
-                    Report
-                  </button>
-                  <ChevronRight className="w-4 h-4 text-akyra-secondary" />
-                </div>
-              </div>
-            ))}
+                )}
+              </>
+            )}
 
             {/* Profiles list */}
             {view.level === "profiles" && profiles.map(profile => (
@@ -499,6 +598,17 @@ export function DbAdminPanel() {
                         </div>
                       </button>
                     ))}
+                    <button
+                      onClick={() => handleDeleteProfile(profile)}
+                      disabled={isDeletingProfile}
+                      className="w-full text-left px-4 py-3 text-sm text-akyra-red hover:bg-akyra-red/10 transition-colors flex items-center justify-between"
+                    >
+                      <span className="flex items-center gap-2">
+                        <Trash2 className="w-3.5 h-3.5" />
+                        Delete profile and roster entry
+                      </span>
+                      {isDeletingProfile && <LoadingSpinner size="sm" />}
+                    </button>
                   </div>
                 )}
               </div>
