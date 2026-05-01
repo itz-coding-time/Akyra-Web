@@ -439,6 +439,17 @@ export async function registerAuthForOrg(
   password: string,
   welcomePhrase: string
 ): Promise<Profile | null> {
+  const { data: license, error: licenseError } = await supabase
+    .from("licenses")
+    .select("org_id")
+    .eq("welcome_phrase", welcomePhrase)
+    .maybeSingle()
+
+  if (licenseError || !license) {
+    console.error("[Auth] Registration org lookup failed:", licenseError?.message)
+    return null
+  }
+
   const syntheticEmail = buildSyntheticEmail(eeid, welcomePhrase)
   console.log("[Auth] Registering:", syntheticEmail)
 
@@ -471,11 +482,17 @@ export async function registerAuthForOrg(
 
   if (!authUid) return null
 
-  // Link auth_uid to profile
-  await supabase
+  // Link auth_uid to the profile in this org only. EEIDs can repeat across orgs.
+  const { error: updateError } = await supabase
     .from("profiles")
     .update({ auth_uid: authUid })
     .eq("eeid", eeid)
+    .eq("org_id", license.org_id)
+
+  if (updateError) {
+    console.error("[Auth] Profile auth link failed:", updateError.message)
+    return null
+  }
 
   return fetchProfileByEeidAndOrg(eeid, welcomePhrase)
 }
@@ -1655,6 +1672,7 @@ export interface OrgSummary {
   storeCount: number
   associateCount: number
   licenseStatus: string | null
+  welcomePhrase: string | null
 }
 
 export interface StoreSummary {
@@ -1673,7 +1691,7 @@ export async function fetchAllOrgs(): Promise<OrgSummary[]> {
       name,
       brand_name,
       stores(id),
-      licenses(status)
+      licenses(status, welcome_phrase)
     `)
 
   if (error || !data) return []
@@ -1693,6 +1711,7 @@ export async function fetchAllOrgs(): Promise<OrgSummary[]> {
       (a: any) => a.stores?.org_id === org.id
     ).length,
     licenseStatus: (org as any).licenses?.[0]?.status ?? null,
+    welcomePhrase: (org as any).licenses?.[0]?.welcome_phrase ?? null,
   }))
 }
 
@@ -3047,6 +3066,33 @@ export async function seedAssociatesForStore(
   }
 
   return { success, failed, errors: errors.length ? errors : undefined }
+}
+
+export async function deleteProfileAndRosterEntry(profile: Profile): Promise<boolean> {
+  if (profile.current_store_id) {
+    const { error: associateError } = await supabase
+      .from("associates")
+      .delete()
+      .eq("store_id", profile.current_store_id)
+      .eq("profile_id", profile.id)
+
+    if (associateError) {
+      console.error("deleteProfileAndRosterEntry associate delete failed:", associateError.message)
+      return false
+    }
+  }
+
+  const { error } = await supabase
+    .from("profiles")
+    .delete()
+    .eq("id", profile.id)
+
+  if (error) {
+    console.error("deleteProfileAndRosterEntry profile delete failed:", error.message)
+    return false
+  }
+
+  return true
 }
 
 export async function seedTasksForStore(
