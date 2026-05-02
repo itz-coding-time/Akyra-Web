@@ -12,7 +12,7 @@ import { AssignTaskSheet } from "../../components/AssignTaskSheet"
 import { CreateTaskFAB } from "../../components/CreateTaskFAB"
 import { AssistancePanel } from "../../components/gamification/AssistancePanel"
 import { SupervisorPingPanel } from "../../components/SupervisorPingPanel"
-import { fetchSupervisorPersonalMetrics } from "../../lib"
+import { fetchSupervisorPersonalMetrics, fetchStoreLeaderboard } from "../../lib"
 import { RespawnAuthorizationPanel } from "../../components/RespawnAuthorizationPanel"
 import type { Database } from "../../types/database.types"
 
@@ -48,10 +48,12 @@ export function OverviewPage() {
   const [supervisorMetrics, setSupervisorMetrics] = useState<any>(null)
   const [metricsOpen, setMetricsOpen] = useState(false)
   const [showRespawnAuth, setShowRespawnAuth] = useState(false)
+  const [leaderboard, setLeaderboard] = useState<any[]>([])
 
   useEffect(() => {
     if (!storeId || !profile?.display_name) return
     fetchSupervisorPersonalMetrics(storeId, profile.display_name).then(setSupervisorMetrics)
+    fetchStoreLeaderboard(storeId).then(setLeaderboard)
   }, [storeId, profile?.display_name])
 
   return (
@@ -210,6 +212,8 @@ export function OverviewPage() {
         isLoading={boardLoading}
         isReassigning={isReassigning}
         onReassign={reassign}
+        leaderboard={leaderboard}
+        activeShifts={activeShifts}
       />
 
       {/* Supervisor Personal Metrics */}

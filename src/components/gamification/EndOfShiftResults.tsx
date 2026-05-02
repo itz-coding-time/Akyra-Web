@@ -1,4 +1,7 @@
+import { useState, useEffect } from "react"
 import { AkyraLogo } from "../AkyraLogo"
+import { TierBadge } from "../TierBadge"
+import { fetchAssociateRanking } from "../../lib"
 import type { Database } from "../../types/database.types"
 
 type ShiftResult = Database["public"]["Tables"]["shift_results"]["Row"]
@@ -27,6 +30,17 @@ export function EndOfShiftResults({
 }: EndOfShiftResultsProps) {
   const killLeader = teamResults.find(r => r.result.is_kill_leader)
   const mvp = teamResults.find(r => (r.result as any).is_mvp)
+  const storeId = teamResults[0]?.result.store_id
+
+  const [ranking, setRanking] = useState<any>(null)
+
+  useEffect(() => {
+    if (myAssociateId && storeId) {
+      fetchAssociateRanking(storeId, myAssociateId).then(r => {
+        setRanking(r)
+      })
+    }
+  }, [myAssociateId, storeId])
 
   return (
     <div className="fixed inset-0 bg-black z-50 overflow-y-auto">
@@ -135,6 +149,32 @@ export function EndOfShiftResults({
                 )
               })}
           </div>
+
+          {ranking && (
+            <div className="text-center space-y-2 pt-2 border-t border-white/10 flex flex-col items-center">
+              <TierBadge
+                tier={ranking.tier}
+                isPredator={ranking.isPredator}
+                size="md"
+                showPoints
+                points={ranking.pointsTotal}
+              />
+
+              {ranking.isPredator && (
+                <p className="text-[10px] font-mono text-yellow-400/60">
+                  You are one of the top performers at this store.
+                </p>
+              )}
+
+              {ranking.isDesynced && (
+                <div className="bg-orange-500/10 border border-orange-500/20 rounded-lg p-2 mt-2 w-full">
+                  <p className="text-[10px] text-orange-400/80 font-mono">
+                    Still desynced · {ranking.desyncAssistsCompleted}/{ranking.desyncAssistsNeeded} assists toward resync
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Done button */}
           <button

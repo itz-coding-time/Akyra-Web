@@ -5,9 +5,11 @@ import {
   fetchDistrictsForOrg,
   fetchStoresForOrg,
   fetchRegionalMetrics,
+  fetchDistrictPredators,
   type RegionSummary,
 } from "../../lib"
 import { LoadingSpinner } from "../../components/LoadingSpinner"
+import { TierBadge } from "../../components/TierBadge"
 import {
   ChevronRight, ChevronLeft, Building2,
   Store, MapPin
@@ -30,6 +32,7 @@ export function RegionalAdminPage() {
   const [stores, setStores] = useState<any[]>([])
   const [metrics, setMetrics] = useState<any>(null)
   const [myRegion, setMyRegion] = useState<RegionSummary | null>(null)
+  const [districtPredators, setDistrictPredators] = useState<any[]>([])
 
   useEffect(() => {
     if (!orgId) return
@@ -61,6 +64,7 @@ export function RegionalAdminPage() {
         setStores(s)
         setIsLoading(false)
       })
+      fetchDistrictPredators(view.districtId).then(setDistrictPredators)
     }
   }, [view, orgId])
 
@@ -202,6 +206,26 @@ export function RegionalAdminPage() {
       {/* Stores in district */}
       {view.level === "stores" && (
         <div className="space-y-3">
+          {districtPredators.length > 0 && (
+            <div className="space-y-2 mb-4">
+              <p className="text-[10px] font-mono uppercase tracking-widest text-yellow-400/60">
+                🔱 District Predators
+              </p>
+              {districtPredators.map(p => (
+                <div key={p.associateId} className="flex items-center justify-between bg-yellow-500/[0.05] border border-yellow-500/20 rounded-xl px-4 py-3">
+                  <div>
+                    <p className="font-semibold text-white">{p.associateName}</p>
+                    <p className="text-xs font-mono text-white/30">Store {p.storeNumber}</p>
+                  </div>
+                  <div className="text-right">
+                    <TierBadge tier="Predator" isPredator size="sm" />
+                    <p className="text-[10px] font-mono text-white/20 mt-0.5">{p.pointsTotal} pts</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
           {stores.length === 0 ? (
             <p className="text-sm text-akyra-secondary">No stores in this district.</p>
           ) : stores.map(store => (

@@ -1,4 +1,4 @@
-import { supabase } from "./supabase"
+﻿import { supabase } from "./supabase"
 import type { Database } from "../types/database.types"
 import type { PullEventSummary } from "../types/pullWorkflow.types"
 import type { StoreConfigAssociate, StoreConfigTask, StoreConfigInventoryItem, StoreConfigTableItem, StoreConfig } from "../types/storeConfig.types"
@@ -20,7 +20,7 @@ type ScheduleEntry = Database["public"]["Tables"]["schedule_entries"]["Row"]
 type TableItem = Database["public"]["Tables"]["table_items"]["Row"]
 type InventoryItem = Database["public"]["Tables"]["inventory_items"]["Row"]
 
-// ── Profiles ──────────────────────────────────────────────────────────────
+// â”€â”€ Profiles â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function fetchProfileByEeid(eeid: string): Promise<Profile | null> {
   const { data, error } = await supabase
@@ -123,7 +123,7 @@ export function clearWelcomeCode(): void {
   localStorage.removeItem(WELCOME_CODE_KEY)
 }
 
-// ── Licensing ─────────────────────────────────────────────────────────────
+// â”€â”€ Licensing â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function fetchLicenseByPhrase(phrase: string): Promise<License | null> {
   const { data, error } = await supabase
@@ -147,7 +147,7 @@ export function isLicenseOnboardable(license: License): boolean {
   return license.status === "active"
 }
 
-// ── Organizations ─────────────────────────────────────────────────────────
+// â”€â”€ Organizations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function fetchOrganizationById(id: string): Promise<Organization | null> {
   const { data, error } = await supabase
@@ -176,7 +176,7 @@ export async function fetchAllOrganizations(): Promise<Organization[]> {
   return data ?? []
 }
 
-// ── Stores ────────────────────────────────────────────────────────────────
+// â”€â”€ Stores â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function fetchStoreByNumberAndOrg(
   storeNumber: string,
@@ -196,7 +196,7 @@ export async function fetchStoreByNumberAndOrg(
   return data
 }
 
-// ── Associates ────────────────────────────────────────────────────────────
+// â”€â”€ Associates â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function fetchAssociatesByStore(storeId: string | null | undefined): Promise<Associate[]> {
   if (!storeId) return []
@@ -213,10 +213,10 @@ export async function fetchAssociatesByStore(storeId: string | null | undefined)
   return data ?? []
 }
 
-// ── Auth ──────────────────────────────────────────────────────────────────
+// â”€â”€ Auth â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /**
- * Get the welcome phrase for an org — used to construct synthetic email.
+ * Get the welcome phrase for an org â€” used to construct synthetic email.
  * Returns null if no license found for the org.
  */
 export async function fetchWelcomePhraseForOrg(orgId: string): Promise<string | null> {
@@ -316,7 +316,7 @@ export async function signInWithEeidAndPin(
     return fetchProfileByEeid(eeid)
   }
 
-  // New schema failed — try old schema (migration path)
+  // New schema failed â€” try old schema (migration path)
   if (welcomePhrase) {
     console.log(`signInWithEeidAndPin: new schema failed, trying old schema for ${eeid}`)
     const oldEmail = `${eeid}@akyra.internal`
@@ -326,7 +326,7 @@ export async function signInWithEeidAndPin(
     })
 
     if (!oldError && oldData.user) {
-      // Old schema worked — migrate silently
+      // Old schema worked â€” migrate silently
       console.log(`signInWithEeidAndPin: migrating ${eeid} to new schema`)
       await migrateAuthSchema(eeid, pin, welcomePhrase)
       return fetchProfileByEeid(eeid)
@@ -391,7 +391,7 @@ export async function registerAuthForProfile(
 
   if (signUpError) {
     if (signUpError.message.includes("already registered")) {
-      // User exists — try signing in with same PIN to link
+      // User exists â€” try signing in with same PIN to link
       const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
         email: syntheticEmail,
         password: pin,
@@ -462,7 +462,7 @@ export async function registerAuthForOrg(
 
   if (signUpError) {
     if (signUpError.message.includes("already registered")) {
-      // Try signing in — previous incomplete registration
+      // Try signing in â€” previous incomplete registration
       const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
         email: syntheticEmail,
         password,
@@ -497,7 +497,7 @@ export async function registerAuthForOrg(
   return fetchProfileByEeidAndOrg(eeid, welcomePhrase)
 }
 
-// ── Google Sign In ────────────────────────────────────────────────────────
+// â”€â”€ Google Sign In â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const DB_ADMIN_WHITELIST = ["therealbrancase@gmail.com"]
 
@@ -540,7 +540,7 @@ export async function handleGoogleCallback(
   const profile = await fetchProfileByEeid(eeid)
 
   if (!profile) {
-    // No profile for this EEID — not a registered associate
+    // No profile for this EEID â€” not a registered associate
     await supabase.auth.signOut()
     return { kind: "error", message: "No account found for this EEID." }
   }
@@ -635,7 +635,7 @@ export async function signOut(): Promise<void> {
   await supabase.auth.signOut()
 }
 
-// ── Passkeys (WebAuthn) ───────────────────────────────────────────────────
+// â”€â”€ Passkeys (WebAuthn) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function isPasskeySupported(): boolean {
   return browserSupportsWebAuthn()
@@ -782,25 +782,99 @@ export async function removePasskeys(): Promise<boolean> {
   return true
 }
 
-// ── Station ───────────────────────────────────────────────────────────────
+// â”€â”€ Station â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+/**
+ * Infer shift bucket from a start time string.
+ * Used as fallback when schedule_entries.shift_bucket is null.
+ */
+function inferShiftBucket(
+  startTime: string
+): "6a-2p" | "2p-10p" | "10p-6a" {
+  const hour = startTime.includes("T")
+    ? new Date(startTime).getHours()
+    : parseInt(startTime.split(":")[0])
+
+  if (hour >= 6 && hour < 14) return "6a-2p"
+  if (hour >= 14 && hour < 22) return "2p-10p"
+  return "10p-6a"
+}
 
 export async function claimStation(
   associateId: string,
-  archetype: string
+  storeId: string,
+  station: string
 ): Promise<boolean> {
-  const { error } = await supabase
+  // Update current_archetype on associate row for realtime notifications
+  await supabase
     .from("associates")
-    .update({ current_archetype: archetype })
+    .update({ current_archetype: station })
     .eq("id", associateId)
 
-  if (error) {
-    console.error("claimStation failed:", error.message)
-    return false
+  // Look up today's schedule entry for this associate
+  const today = new Date().toISOString().split("T")[0]
+
+  const { data: scheduleEntry } = await supabase
+    .from("schedule_entries")
+    .select("start_time, end_time, shift_bucket")
+    .eq("associate_id", associateId)
+    .eq("store_id", storeId)
+    .eq("shift_date", today)
+    .maybeSingle()
+
+  // Calculate TTL:
+  // If schedule entry exists â†’ use end_time + 30min buffer
+  // If no schedule entry â†’ fall back to 10 hours from now
+  let expiresAt: string
+  let scheduledEndTime: string | null = null
+  let shiftBucket: string | null = null
+
+  if (scheduleEntry?.end_time) {
+    const [hours, mins] = scheduleEntry.end_time.split(":").map(Number)
+    const endTime = new Date()
+    endTime.setHours(hours, mins, 0, 0)
+
+    // Handle midnight wrap
+    if (scheduleEntry.start_time) {
+      const [sHours] = scheduleEntry.start_time.split(":").map(Number)
+      if (sHours > hours) endTime.setDate(endTime.getDate() + 1)
+    }
+
+    endTime.setMinutes(endTime.getMinutes() + 30) // 30min buffer
+    expiresAt = endTime.toISOString()
+
+    const schedEnd = new Date()
+    schedEnd.setHours(hours, mins, 0, 0)
+    if (scheduleEntry.start_time) {
+      const [sHours] = scheduleEntry.start_time.split(":").map(Number)
+      if (sHours > hours) schedEnd.setDate(schedEnd.getDate() + 1)
+    }
+    scheduledEndTime = schedEnd.toISOString()
+
+    shiftBucket = scheduleEntry.shift_bucket ?? inferShiftBucket(scheduleEntry.start_time)
+  } else {
+    // Fallback â€” 10 hours from now
+    expiresAt = new Date(Date.now() + 10 * 60 * 60 * 1000).toISOString()
   }
-  return true
+
+  // Upsert active shift
+  const { error } = await supabase
+    .from("active_shifts")
+    .upsert({
+      associate_id: associateId,
+      store_id: storeId,
+      station,
+      is_active: true,
+      expires_at: expiresAt,
+      scheduled_end_time: scheduledEndTime,
+      shift_bucket: shiftBucket,
+      original_end_time: scheduledEndTime, // preserve original for extension tracking
+    }, { onConflict: "associate_id,store_id" })
+
+  return !error
 }
 
-// ── Tasks ─────────────────────────────────────────────────────────────────
+// â”€â”€ Tasks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function fetchTasksForAssociate(
   storeId: string,
@@ -861,7 +935,7 @@ export async function fetchTasksForSupervisor(storeId: string): Promise<Task[]> 
 }
 
 /**
- * Escalation Engine — runs after expireStaleShifts
+ * Escalation Engine â€” runs after expireStaleShifts
  * Finds tasks assigned to associates whose sessions just expired,
  * clears the assignee, bumps priority to Critical, sets is_orphaned = true
  */
@@ -910,7 +984,7 @@ export async function orphanTasksForExpiredSessions(
   }
 
   console.log(`Escalation Engine: ${tasks.length} task(s) orphaned from expired sessions`)
-  tasks.forEach(t => console.log(`  ↑ "${t.task_name}" (was assigned to ${t.assigned_to})`))
+  tasks.forEach(t => console.log(`  â†‘ "${t.task_name}" (was assigned to ${t.assigned_to})`))
 
   return tasks.length
 }
@@ -963,28 +1037,71 @@ export async function markTaskPendingVerification(
   taskId: string,
   completedBy: string
 ): Promise<boolean> {
-  const { error } = await supabase
+  const { data: task } = await supabase
     .from("tasks")
-    .update({ pending_verification: true, completed_by: completedBy })
+    .select("store_id, base_points, assigned_to_associate_id")
+    .eq("id", taskId)
+    .maybeSingle()
+
+  const { error } = await (supabase as any)
+    .from("tasks")
+    .update({ 
+      pending_verification: true, 
+      completed_by: completedBy,
+      completed_at: new Date().toISOString()
+    })
     .eq("id", taskId)
 
   if (error) {
     console.error("markTaskPendingVerification failed:", error.message)
     return false
   }
+
+  if (task?.store_id && task?.assigned_to_associate_id) {
+    await logPoints(
+      task.store_id,
+      task.assigned_to_associate_id,
+      task.base_points ?? 10,
+      "task_complete",
+      taskId
+    )
+  }
+
   return true
 }
 
 export async function verifyTaskComplete(taskId: string): Promise<boolean> {
-  const { error } = await supabase
+  const { data: task } = await supabase
     .from("tasks")
-    .update({ is_completed: true, pending_verification: false })
+    .select("store_id, base_points, assigned_to_associate_id")
+    .eq("id", taskId)
+    .maybeSingle()
+
+  const { error } = await (supabase as any)
+    .from("tasks")
+    .update({ 
+      is_completed: true, 
+      pending_verification: false,
+      completed_at: new Date().toISOString()
+    })
     .eq("id", taskId)
 
   if (error) {
     console.error("verifyTaskComplete failed:", error.message)
     return false
   }
+
+  if (task?.store_id && task?.assigned_to_associate_id) {
+    const points = Math.round((task.base_points ?? 10) * 1.5)
+    await logPoints(
+      task.store_id,
+      task.assigned_to_associate_id,
+      points,
+      "task_verified",
+      taskId
+    )
+  }
+
   return true
 }
 
@@ -1001,7 +1118,7 @@ export async function rejectTaskCompletion(taskId: string): Promise<boolean> {
   return true
 }
 
-// ── Flip Checklists (table_items) ─────────────────────────────────────────
+// â”€â”€ Flip Checklists (table_items) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function fetchTableItemsByStation(
   storeId: string,
@@ -1036,7 +1153,7 @@ export async function flagTableItem(
   return true
 }
 
-// ── Pull Lists (inventory_items) ──────────────────────────────────────────
+// â”€â”€ Pull Lists (inventory_items) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function fetchInventoryByCategory(
   storeId: string,
@@ -1072,7 +1189,7 @@ export async function updateInventoryAmountHave(
   return true
 }
 
-// ── Shift Reset ───────────────────────────────────────────────────────────
+// â”€â”€ Shift Reset â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function resetShiftTasks(storeId: string): Promise<number> {
   const { data, error } = await supabase
@@ -1138,7 +1255,7 @@ export async function startShift(storeId: string): Promise<{
   return { tasksReset, itemsReset, shiftsClosed }
 }
 
-// ── Pull Workflow & Code Tracking ─────────────────────────────────────────
+// â”€â”€ Pull Workflow & Code Tracking â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /**
  * Called when an associate confirms a bread pull is complete.
@@ -1263,7 +1380,7 @@ export async function fetchExpiringPullEvents(
 }
 
 /**
- * Mark expiring pull events as verified (used through — no waste).
+ * Mark expiring pull events as verified (used through â€” no waste).
  */
 export async function verifyPullEventsUsedThrough(
   pullEventIds: string[]
@@ -1347,13 +1464,21 @@ export async function hasExpiringPullEvents(storeId: string): Promise<boolean> {
   return (count ?? 0) > 0
 }
 
-// ── JIT Task Creation ─────────────────────────────────────────────────────
+function getCurrentShiftBucket(): "6a-2p" | "2p-10p" | "10p-6a" {
+  const hour = new Date().getHours()
+  if (hour >= 6 && hour < 14) return "6a-2p"
+  if (hour >= 14 && hour < 22) return "2p-10p"
+  return "10p-6a"
+}
+
+// â”€â”€ JIT Task Creation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function createJitTask(
   storeId: string,
   taskName: string,
   archetype: string,
-  priority: string
+  priority: string,
+  isCrossShiftCritical: boolean = false
 ): Promise<Task | null> {
   const { data, error } = await supabase
     .from("tasks")
@@ -1369,6 +1494,9 @@ export async function createJitTask(
       base_points: 10,
       is_pull_task: false,
       is_truck_task: false,
+      shift_bucket: getCurrentShiftBucket(),
+      lifecycle_state: "active",
+      is_cross_shift_critical: isCrossShiftCritical,
     })
     .select()
     .maybeSingle()
@@ -1380,7 +1508,7 @@ export async function createJitTask(
   return data
 }
 
-// ── Task Queue ────────────────────────────────────────────────────────────
+// â”€â”€ Task Queue â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /**
  * Fetch the next task in an associate's personal queue.
@@ -1469,10 +1597,9 @@ export async function fetchActiveShiftsWithCurrentTask(
   associateName: string
   station: string
   currentTask: string | null
+  isExtended: boolean
 }>> {
-  const { data: shifts, error } = await supabase
-    .from("active_shifts")
-    .select("associate_id, station, associates(id, name)")
+  const { data: shifts, error } = await (supabase as any).from("active_shifts").select("associate_id, station, is_extended, associates(id, name)")
     .eq("store_id", storeId)
     .eq("is_active", true)
     .gt("expires_at", new Date().toISOString())
@@ -1481,8 +1608,8 @@ export async function fetchActiveShiftsWithCurrentTask(
 
   const results = await Promise.all(
     shifts
-      .filter(s => s.associate_id !== excludeAssociateId)
-      .map(async (shift) => {
+      .filter((s: any) => s.associate_id !== excludeAssociateId)
+      .map(async (shift: any) => {
         const assoc = (shift as any).associates
 
         // Get their next queued task
@@ -1502,6 +1629,7 @@ export async function fetchActiveShiftsWithCurrentTask(
           associateName: assoc?.name ?? "Unknown",
           station: shift.station ?? "Unknown",
           currentTask: nextTask?.task_name ?? null,
+          isExtended: !!shift.is_extended,
         }
       })
   )
@@ -1509,7 +1637,7 @@ export async function fetchActiveShiftsWithCurrentTask(
   return results
 }
 
-// ── Schedule ──────────────────────────────────────────────────────────────
+// â”€â”€ Schedule â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function fetchScheduleForStore(
   storeId: string,
@@ -1533,7 +1661,7 @@ export async function fetchScheduleForStore(
   return (data ?? []) as unknown as ScheduleEntry[]
 }
 
-// ── Active Shifts (Ghost Protocol) ───────────────────────────────────────
+// â”€â”€ Active Shifts (Ghost Protocol) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function createActiveShift(
   associateId: string,
@@ -1630,7 +1758,7 @@ export async function fetchMyActiveShift(associateId: string): Promise<ActiveShi
   return data
 }
 
-// Expire sessions past their TTL — run on dashboard refresh
+// Expire sessions past their TTL â€” run on dashboard refresh
 export async function expireStaleShifts(storeId: string): Promise<number> {
   const { data, error } = await supabase
     .from("active_shifts")
@@ -1663,7 +1791,7 @@ export async function updateScheduleEndTime(
   return true
 }
 
-// ── DB Admin ──────────────────────────────────────────────────────────────
+// â”€â”€ DB Admin â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface OrgSummary {
   id: string
@@ -1775,7 +1903,7 @@ export async function updateProfileRole(
   return true
 }
 
-// ── Districts ─────────────────────────────────────────────────────────────
+// â”€â”€ Districts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function fetchDistrictsForOrg(orgId: string): Promise<Array<{
   id: string
@@ -1860,7 +1988,7 @@ export async function assignStoreToDistrict(
   return !error
 }
 
-// ── Password Reset ────────────────────────────────────────────────────────
+// â”€â”€ Password Reset â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function resetAssociatePassword(
   authUid: string,
@@ -1884,7 +2012,7 @@ export function generateTempPassword(): string {
   return `${word}${num}!`
 }
 
-// ── 30-Day District Associate View ────────────────────────────────────────
+// â”€â”€ 30-Day District Associate View â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function fetchDistrictAssociatesLast30Days(
   storeId: string,
@@ -1940,7 +2068,7 @@ export async function fetchDistrictAssociatesLast30Days(
   return results
 }
 
-// ── Org Management ────────────────────────────────────────────────────────
+// â”€â”€ Org Management â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function createOrganization(
   name: string,
@@ -1990,15 +2118,15 @@ export async function createOrganization(
 
   // Step 3: Seed default stations
   const { error: stationsError } = await supabase.from("org_stations").insert([
-    { org_id: org.id, name: "Kitchen", emoji: "🍳", description: "Kitchen operations",   is_supervisor_only: false, is_float: false, display_order: 1 },
-    { org_id: org.id, name: "POS",     emoji: "🖥️", description: "Front counter",       is_supervisor_only: false, is_float: false, display_order: 2 },
-    { org_id: org.id, name: "Float",   emoji: "⚡", description: "Fill in where needed", is_supervisor_only: false, is_float: true,  display_order: 3 },
-    { org_id: org.id, name: "MOD",     emoji: "👑", description: "Manager on duty",      is_supervisor_only: true,  is_float: false, display_order: 4 },
+    { org_id: org.id, name: "Kitchen", emoji: "ðŸ³", description: "Kitchen operations",   is_supervisor_only: false, is_float: false, display_order: 1 },
+    { org_id: org.id, name: "POS",     emoji: "ðŸ–¥ï¸", description: "Front counter",       is_supervisor_only: false, is_float: false, display_order: 2 },
+    { org_id: org.id, name: "Float",   emoji: "âš¡", description: "Fill in where needed", is_supervisor_only: false, is_float: true,  display_order: 3 },
+    { org_id: org.id, name: "MOD",     emoji: "ðŸ‘‘", description: "Manager on duty",      is_supervisor_only: true,  is_float: false, display_order: 4 },
   ])
 
   if (stationsError) {
     console.error("[createOrganization] Stations insert failed:", stationsError.message)
-    // Non-fatal — org and license were created successfully
+    // Non-fatal â€” org and license were created successfully
   }
 
   console.log("[createOrganization] Complete:", { orgId: org.id, licenseId: license.id })
@@ -2037,7 +2165,7 @@ export async function createStore(
   return store.id
 }
 
-// ── Org Context ───────────────────────────────────────────────────────────
+// â”€â”€ Org Context â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function updateOrgBranding(
   orgId: string,
@@ -2159,7 +2287,7 @@ export async function fetchOrgStations(orgId: string): Promise<import("../types"
   }))
 }
 
-// ── Station Management ────────────────────────────────────────────────────
+// â”€â”€ Station Management â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function createOrgStation(
   orgId: string,
@@ -2234,7 +2362,7 @@ export async function reorderOrgStations(
   return true
 }
 
-// ── Equipment Issues (The Black Box) ─────────────────────────────────────
+// â”€â”€ Equipment Issues (The Black Box) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function fetchEquipmentIssues(storeId: string): Promise<EquipmentIssue[]> {
   const { data, error } = await supabase
@@ -2323,7 +2451,7 @@ export async function updateEquipmentIssueStatus(
   return true
 }
 
-// ── Assistance Requests ───────────────────────────────────────────────────
+// â”€â”€ Assistance Requests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function createAssistanceRequest(
   storeId: string,
@@ -2428,7 +2556,7 @@ export async function resolveAssistanceRequest(
   return { success: true, message: "Resolved" }
 }
 
-// ── Leading By Exception ──────────────────────────────────────────────────
+// â”€â”€ Leading By Exception â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function startTaskTimer(taskId: string): Promise<boolean> {
   const { error } = await supabase
@@ -2637,20 +2765,298 @@ export async function fetchChallengedTasksForStoreManager(
   return data ?? []
 }
 
+// â”€â”€ Points Engine â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+export async function logPoints(
+  storeId: string,
+  associateId: string,
+  points: number,
+  reason: "task_complete" | "task_verified" | "assist_given" | "kill_leader" | "mvp" | "challenge_vindicated" | "desync_cleared",
+  taskId?: string
+): Promise<void> {
+  await (supabase as any).from("points_log").insert({
+    store_id: storeId,
+    associate_id: associateId,
+    points,
+    reason,
+    task_id: taskId ?? null,
+    shift_date: new Date().toISOString().split("T")[0],
+  })
+}
+
+// â”€â”€ Challenge Pattern Tracking â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+export async function trackChallengePattern(params: {
+  storeId: string
+  taskId: string
+  taskName: string
+  associateId: string
+  associateName: string
+  supervisorId: string | null
+  supervisorName: string | null
+  patternType: "associate_task" | "supervisor_task" | "associate_supervisor"
+}): Promise<void> {
+  const { data: store } = await (supabase as any)
+    .from("stores")
+    .select("org_id, district_id")
+    .eq("id", params.storeId)
+    .maybeSingle()
+
+  let query = (supabase as any)
+    .from("challenge_patterns")
+    .select("id, challenge_count")
+    .eq("store_id", params.storeId)
+    .eq("pattern_type", params.patternType)
+    .eq("is_resolved", false)
+    .gt("window_end", new Date().toISOString().split("T")[0])
+
+  if (params.patternType === "associate_task") {
+    query = query.eq("associate_id", params.associateId).eq("task_id", params.taskId)
+  } else if (params.patternType === "supervisor_task") {
+    query = query.eq("supervisor_id", params.supervisorId).eq("task_id", params.taskId)
+  } else {
+    query = query.eq("associate_id", params.associateId).eq("supervisor_id", params.supervisorId)
+  }
+
+  const { data: existing } = await query.maybeSingle()
+
+  if (existing) {
+    const newCount = existing.challenge_count + 1
+    const flagLevel =
+      params.patternType === "associate_task"
+        ? newCount >= 3 ? "retrain" : "watch"
+        : params.patternType === "supervisor_task"
+        ? newCount >= 2 ? "sop_review" : "watch"
+        : newCount >= 3 ? "bias_review" : "watch"
+
+    await (supabase as any)
+      .from("challenge_patterns")
+      .update({ challenge_count: newCount, flag_level: flagLevel, updated_at: new Date().toISOString() })
+      .eq("id", existing.id)
+  } else {
+    await (supabase as any).from("challenge_patterns").insert({
+      store_id: params.storeId,
+      org_id: store?.org_id ?? "",
+      district_id: store?.district_id ?? null,
+      task_id: params.taskId,
+      task_name: params.taskName,
+      associate_id: params.associateId,
+      associate_name: params.associateName,
+      supervisor_id: params.supervisorId,
+      supervisor_name: params.supervisorName,
+      pattern_type: params.patternType,
+      challenge_count: 1,
+      flag_level: "watch",
+    })
+  }
+}
+
+// â”€â”€ Desync Check â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+export async function checkAndApplyDesync(
+  storeId: string,
+  associateId: string,
+  associateName: string
+): Promise<void> {
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - 30)
+
+  const { count } = await supabase
+    .from("task_verifications")
+    .select("*", { count: "exact", head: true })
+    .eq("store_id", storeId)
+    .eq("associate_id", associateId)
+    .in("status", ["resolved_retry", "resolved_challenged"])
+    .gte("created_at", cutoff.toISOString())
+
+  if ((count ?? 0) >= 3) {
+    const { data: store } = await (supabase as any)
+      .from("stores")
+      .select("org_id, district_id")
+      .eq("id", storeId)
+      .maybeSingle()
+
+    await (supabase as any)
+      .from("associate_rankings")
+      .upsert({
+        store_id: storeId,
+        associate_id: associateId,
+        associate_name: associateName,
+        org_id: store?.org_id ?? "",
+        district_id: store?.district_id ?? null,
+        is_desynced: true,
+        desync_reason: "3+ verification failures in 30 days",
+        desync_since: new Date().toISOString(),
+        desync_assists_needed: 3,
+        desync_assists_completed: 0,
+      }, { onConflict: "store_id,associate_id" })
+  }
+}
+
+// â”€â”€ Challenge Resolution with Consequences â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
 export async function resolveChallenge(
   verificationId: string,
-  storeManagerId: string,
+  storeManagerProfileId: string,
   verdict: "complete" | "incomplete"
 ): Promise<boolean> {
+  const { data: v } = await supabase
+    .from("task_verifications")
+    .select(`
+      *,
+      tasks!task_id(task_name, store_id, base_points, archetype),
+      associates!associate_id(id, name, store_id),
+      associates!supervisor_id(id, name)
+    `)
+    .eq("id", verificationId)
+    .maybeSingle()
+
+  if (!v) return false
+
+  const task = (v as any).tasks
+  const associate = (v as any).associates
+  const supervisor = (v as any).supervisor
+  const storeId = task?.store_id ?? associate?.store_id
+
+  const newStatus = verdict === "complete" ? "resolved_accepted" : "resolved_retry"
   const { error } = await supabase
     .from("task_verifications")
     .update({
-      store_manager_id: storeManagerId,
+      store_manager_id: storeManagerProfileId,
       store_manager_verdict: verdict,
       challenge_resolved: true,
       resolved_at: new Date().toISOString(),
+      status: newStatus,
     })
     .eq("id", verificationId)
+
+  if (error) return false
+
+  if (verdict === "complete") {
+    await supabase
+      .from("tasks")
+      .update({ is_completed: true, pending_verification: false })
+      .eq("id", v.task_id)
+
+    if (storeId && v.associate_id) {
+      await logPoints(storeId, v.associate_id, 25, "challenge_vindicated", v.task_id)
+    }
+
+    if (storeId && supervisor?.id) {
+      await trackChallengePattern({
+        storeId,
+        taskId: v.task_id,
+        taskName: task?.task_name ?? "Unknown",
+        associateId: v.associate_id,
+        associateName: associate?.name ?? "Unknown",
+        supervisorId: supervisor.id,
+        supervisorName: supervisor.name,
+        patternType: "supervisor_task",
+      })
+
+      await trackChallengePattern({
+        storeId,
+        taskId: v.task_id,
+        taskName: task?.task_name ?? "Unknown",
+        associateId: v.associate_id,
+        associateName: associate?.name ?? "Unknown",
+        supervisorId: supervisor.id,
+        supervisorName: supervisor.name,
+        patternType: "associate_supervisor",
+      })
+
+      await (supabase as any).from("pings").insert({
+        store_id: storeId,
+        from_associate_id: v.associate_id,
+        to_associate_id: supervisor.id,
+        message: `Store Manager ruled "${task?.task_name}" was completed. Your rejection was overturned.`,
+        ping_type: "direct",
+      })
+    }
+  } else {
+    await (supabase as any)
+      .from("tasks")
+      .update({
+        pending_verification: false,
+        is_completed: false,
+        started_at: null,
+        completed_at: null,
+      })
+      .eq("id", v.task_id)
+
+    if (storeId) {
+      await trackChallengePattern({
+        storeId,
+        taskId: v.task_id,
+        taskName: task?.task_name ?? "Unknown",
+        associateId: v.associate_id,
+        associateName: associate?.name ?? "Unknown",
+        supervisorId: supervisor?.id ?? null,
+        supervisorName: supervisor?.name ?? null,
+        patternType: "associate_task",
+      })
+
+      await checkAndApplyDesync(storeId, v.associate_id, associate?.name ?? "Unknown")
+
+      await (supabase as any).from("pings").insert({
+        store_id: storeId,
+        from_associate_id: storeManagerProfileId,
+        to_associate_id: v.associate_id,
+        message: `Store Manager reviewed "${task?.task_name}" â€” please complete it properly and try again.`,
+        ping_type: "direct",
+      })
+    }
+  }
+
+  return true
+}
+
+export async function fetchChallengePatterns(storeId: string): Promise<Array<{
+  id: string
+  patternType: string
+  taskName: string
+  associateName: string
+  supervisorName: string | null
+  challengeCount: number
+  flagLevel: string
+  windowEnd: string
+}>> {
+  const { data, error } = await (supabase as any)
+    .from("challenge_patterns")
+    .select("*")
+    .eq("store_id", storeId)
+    .eq("is_resolved", false)
+    .gt("window_end", new Date().toISOString().split("T")[0])
+    .order("challenge_count", { ascending: false })
+
+  if (error || !data) return []
+
+  return data.map((p: any) => ({
+    id: p.id,
+    patternType: p.pattern_type,
+    taskName: p.task_name,
+    associateName: p.associate_name,
+    supervisorName: p.supervisor_name,
+    challengeCount: p.challenge_count,
+    flagLevel: p.flag_level,
+    windowEnd: p.window_end,
+  }))
+}
+
+export async function resolveChallengePattern(
+  patternId: string,
+  resolvedById: string,
+  notes: string
+): Promise<boolean> {
+  const { error } = await (supabase as any)
+    .from("challenge_patterns")
+    .update({
+      is_resolved: true,
+      resolved_by: resolvedById,
+      resolved_at: new Date().toISOString(),
+      resolution_notes: notes,
+    })
+    .eq("id", patternId)
 
   return !error
 }
@@ -2717,7 +3123,7 @@ export async function reviewTimeSuggestion(
   return !error
 }
 
-// ── Kill Leader & Burn Cards ──────────────────────────────────────────────
+// â”€â”€ Kill Leader & Burn Cards â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function calculateAndSaveShiftResults(
   storeId: string,
@@ -2823,6 +3229,8 @@ export async function calculateAndSaveShiftResults(
       }).eq("id", mvpId)
     }
   }
+
+  await calculateStoreRankings(storeId)
 }
 
 /**
@@ -2846,7 +3254,7 @@ export async function getAssociateSpendableCards(profileId: string): Promise<{
 }
 
 /**
- * Spend a card (burn or squad — same mechanic).
+ * Spend a card (burn or squad â€” same mechanic).
  * Deducts from burn cards first, then squad cards.
  */
 export async function spendCard(
@@ -2929,7 +3337,7 @@ export async function useBurnCard(
     taskId,
     supervisorAssociateId,
     supervisorName,
-    1 // queue position 1 — immediate
+    1 // queue position 1 â€” immediate
   )
 
   if (!success) return false
@@ -2950,7 +3358,7 @@ export function getShiftBucket(timeStr: string): "6a-2p" | "2p-10p" | "10p-6a" {
   return "10p-6a"
 }
 
-// ── Store Setup ───────────────────────────────────────────────────────────
+// â”€â”€ Store Setup â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function seedAssociatesForStore(
   storeId: string,
@@ -3204,7 +3612,7 @@ export async function exportStoreConfig(storeId: string): Promise<StoreConfig> {
   }
 }
 
-// ── Shift Results (GX1) ───────────────────────────────────────────────────
+// â”€â”€ Shift Results (GX1) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 type ShiftResult = Database["public"]["Tables"]["shift_results"]["Row"]
 
@@ -3233,7 +3641,7 @@ export async function fetchShiftResultsForStore(storeId: string): Promise<TeamSh
   }))
 }
 
-// ── Report Aliases ────────────────────────────────────────────────────────
+// â”€â”€ Report Aliases â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface ReportAliasItem {
   id: string
@@ -3386,7 +3794,7 @@ export async function autoGenerateAliases(
 
 /**
  * Generate a research-ready report for a store.
- * Uses report_alias everywhere — no org-specific names.
+ * Uses report_alias everywhere â€” no org-specific names.
  */
 export async function generateResearchReport(
   storeId: string,
@@ -3420,7 +3828,7 @@ export async function generateResearchReport(
     burnCardsEarned: number
   }
 }> {
-  // Task metrics — uses report_alias
+  // Task metrics â€” uses report_alias
   const { data: verifications } = await supabase
     .from("task_verifications")
     .select(`
@@ -3469,7 +3877,7 @@ export async function generateResearchReport(
     slowCompletions: t.slowCompletions,
   }))
 
-  // Inventory metrics — uses report_alias
+  // Inventory metrics â€” uses report_alias
   const { data: pullEvents } = await supabase
     .from("pull_events")
     .select(`
@@ -3548,7 +3956,7 @@ export async function generateResearchReport(
   }
 }
 
-// ── Store Manager Analytics ───────────────────────────────────────────────
+// â”€â”€ Store Manager Analytics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function fetchTopPerformers(
   storeId: string,
@@ -3715,7 +4123,7 @@ export async function fetchStoreMetrics(
   }
 }
 
-// ── Ping System ───────────────────────────────────────────────────────────
+// â”€â”€ Ping System â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function sendPing(
   storeId: string,
@@ -3840,10 +4248,470 @@ export async function acceptTaskOffer(
     shift_bucket: bucket,
   })
 
+  // Get task base_points for assist log
+  const { data: task } = await supabase
+    .from("tasks")
+    .select("base_points")
+    .eq("id", taskId)
+    .maybeSingle()
+
+  // Log 2x points for assist
+  await logPoints(
+    storeId,
+    acceptingAssociateId,
+    Math.round((task?.base_points ?? 10) * 2),
+    "assist_given",
+    taskId
+  )
+
+  // Check if this assist helps resync
+  const resynced = await checkDesyncResync(storeId, acceptingAssociateId)
+  if (resynced) {
+    // Notify associate they've resynced
+    await (supabase as any).from("pings").insert({
+      store_id: storeId,
+      from_associate_id: originalAssociateId,
+      to_associate_id: acceptingAssociateId,
+      message: "You're back in sync with the squad. Keep it up. ðŸ”¥",
+      ping_type: "direct",
+    })
+  }
+
   return true
 }
 
-// ── Supervisor Personal Metrics ───────────────────────────────────────────
+/**
+ * Calculate and update associate_rankings for a store.
+ * Called at end of shift or on demand.
+ * Uses rolling 30-day points from points_log.
+ */
+export async function calculateStoreRankings(storeId: string): Promise<void> {
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - 30)
+  const cutoffStr = cutoff.toISOString().split("T")[0]
+
+  // Get store metadata
+  const { data: store } = await (supabase as any)
+    .from("stores")
+    .select("org_id, district_id")
+    .eq("id", storeId)
+    .maybeSingle()
+
+  if (!store) return
+
+  // Get district's region_id
+  let regionId: string | null = null
+  if (store.district_id) {
+    const { data: district } = await (supabase as any)
+      .from("districts")
+      .select("region_id")
+      .eq("id", store.district_id)
+      .maybeSingle()
+    regionId = district?.region_id ?? null
+  }
+
+  // Aggregate points by associate from points_log
+  const { data: pointsData } = await (supabase as any)
+    .from("points_log")
+    .select("associate_id, points, reason")
+    .eq("store_id", storeId)
+    .gte("shift_date", cutoffStr)
+
+  if (!pointsData) return
+
+  // Group by associate
+  const byAssociate: Record<string, {
+    points_tasks: number
+    points_verified: number
+    points_assists: number
+    points_kill_leader: number
+    points_mvp: number
+    points_vindicated: number
+    total: number
+  }> = {}
+
+  for (const row of pointsData as any[]) {
+    if (!byAssociate[row.associate_id]) {
+      byAssociate[row.associate_id] = {
+        points_tasks: 0,
+        points_verified: 0,
+        points_assists: 0,
+        points_kill_leader: 0,
+        points_mvp: 0,
+        points_vindicated: 0,
+        total: 0,
+      }
+    }
+    const g = byAssociate[row.associate_id]
+    g.total += row.points
+
+    switch (row.reason) {
+      case "task_complete": g.points_tasks += row.points; break
+      case "task_verified": g.points_verified += row.points; break
+      case "assist_given": g.points_assists += row.points; break
+      case "kill_leader": g.points_kill_leader += row.points; break
+      case "mvp": g.points_mvp += row.points; break
+      case "challenge_vindicated": g.points_vindicated += row.points; break
+    }
+  }
+
+  // Sort by total points to determine tiers and Predator status
+  const sorted = Object.entries(byAssociate)
+    .sort(([, a], [, b]) => b.total - a.total)
+
+  // Determine tiers
+  // Top 3 = Predator, then Master/Diamond/Platinum by quartile
+  const predatorIds = new Set(sorted.slice(0, 3).map(([id]) => id))
+
+  function getTier(rank: number, totalPoints: number): "Platinum" | "Diamond" | "Master" | "Predator" {
+    if (predatorIds.has(sorted[rank]?.[0] ?? "")) return "Predator"
+    if (totalPoints >= 500) return "Master"
+    if (totalPoints >= 200) return "Diamond"
+    return "Platinum"
+  }
+
+  // Fetch existing rankings to detect tier changes
+  const { data: existingRankings } = await (supabase as any)
+    .from("associate_rankings")
+    .select("associate_id, tier, is_desynced, desync_assists_needed, desync_assists_completed")
+    .eq("store_id", storeId)
+
+  const existingMap: Record<string, any> = {}
+  for (const r of existingRankings ?? []) {
+    existingMap[r.associate_id] = r
+  }
+
+  // Fetch associate names
+  const associateIds = sorted.map(([id]) => id)
+  const { data: associates } = await (supabase as any)
+    .from("associates")
+    .select("id, name")
+    .in("id", associateIds)
+
+  const nameMap: Record<string, string> = {}
+  for (const a of associates ?? []) nameMap[a.id] = a.name
+
+  // Upsert rankings
+  const upsertRows = sorted.map(([associateId, points], rank) => {
+    const existing = existingMap[associateId]
+    const newTier = getTier(rank, points.total)
+    const isPredator = newTier === "Predator"
+    const isSuccessionCandidate = isPredator
+
+    const tierChanged = existing?.tier !== newTier
+
+    return {
+      store_id: storeId,
+      org_id: store.org_id,
+      district_id: store.district_id ?? null,
+      region_id: regionId,
+      associate_id: associateId,
+      associate_name: nameMap[associateId] ?? "Unknown",
+      points_tasks: points.points_tasks,
+      points_verified: points.points_verified,
+      points_assists: points.points_assists,
+      points_kill_leader: points.points_kill_leader,
+      points_mvp: points.points_mvp,
+      points_vindicated: points.points_vindicated,
+      points_total: points.total,
+      tier: newTier,
+      previous_tier: tierChanged ? (existing?.tier ?? null) : undefined,
+      tier_changed_at: tierChanged ? new Date().toISOString() : undefined,
+      is_predator: isPredator,
+      is_succession_candidate: isSuccessionCandidate,
+      last_calculated: new Date().toISOString(),
+    }
+  })
+
+  if (upsertRows.length > 0) {
+    await (supabase as any)
+      .from("associate_rankings")
+      .upsert(upsertRows, { onConflict: "store_id,associate_id" })
+  }
+}
+
+/**
+ * Check if a desynced associate has completed enough assists to resync.
+ * Called whenever an assist is logged.
+ */
+export async function checkDesyncResync(
+  storeId: string,
+  associateId: string
+): Promise<boolean> {
+  const { data: ranking } = await (supabase as any)
+    .from("associate_rankings")
+    .select("is_desynced, desync_assists_needed, desync_assists_completed, desync_since")
+    .eq("store_id", storeId)
+    .eq("associate_id", associateId)
+    .maybeSingle()
+
+  if (!ranking?.is_desynced) return false
+
+  const newCount = (ranking.desync_assists_completed ?? 0) + 1
+
+  if (newCount >= (ranking.desync_assists_needed ?? 3)) {
+    // Resync!
+    await (supabase as any)
+      .from("associate_rankings")
+      .update({
+        is_desynced: false,
+        desync_cleared_at: new Date().toISOString(),
+        desync_assists_completed: newCount,
+      })
+      .eq("store_id", storeId)
+      .eq("associate_id", associateId)
+
+    // Award resync bonus
+    await logPoints(storeId, associateId, 100, "desync_cleared")
+
+    return true // resynced
+  } else {
+    // Increment assists completed
+    await (supabase as any)
+      .from("associate_rankings")
+      .update({ desync_assists_completed: newCount })
+      .eq("store_id", storeId)
+      .eq("associate_id", associateId)
+
+    return false // not yet
+  }
+}
+
+/**
+ * Fetch ranking for a single associate.
+ */
+export async function fetchAssociateRanking(
+  storeId: string,
+  associateId: string
+): Promise<{
+  tier: string
+  isPredator: boolean
+  isDesynced: boolean
+  desyncAssistsNeeded: number
+  desyncAssistsCompleted: number
+  pointsTotal: number
+} | null> {
+  const { data } = await (supabase as any)
+    .from("associate_rankings")
+    .select("*")
+    .eq("store_id", storeId)
+    .eq("associate_id", associateId)
+    .maybeSingle()
+
+  if (!data) return null
+
+  return {
+    tier: data.tier,
+    isPredator: data.is_predator,
+    isDesynced: data.is_desynced,
+    desyncAssistsNeeded: data.desync_assists_needed,
+    desyncAssistsCompleted: data.desync_assists_completed,
+    pointsTotal: data.points_total,
+  }
+}
+
+/**
+ * Fetch store rankings leaderboard.
+ */
+export async function fetchStoreLeaderboard(storeId: string): Promise<Array<{
+  associateId: string
+  associateName: string
+  tier: string
+  isPredator: boolean
+  isDesynced: boolean
+  pointsTotal: number
+  pointsAssists: number
+}>> {
+  const { data, error } = await (supabase as any)
+    .from("associate_rankings")
+    .select("*")
+    .eq("store_id", storeId)
+    .order("points_total", { ascending: false })
+
+  if (error || !data) return []
+
+  return data.map((r: any) => ({
+    associateId: r.associate_id,
+    associateName: r.associate_name,
+    tier: r.tier,
+    isPredator: r.is_predator,
+    isDesynced: r.is_desynced,
+    pointsTotal: r.points_total,
+    pointsAssists: r.points_assists,
+  }))
+}
+
+export async function fetchDistrictPredators(districtId: string): Promise<Array<{
+  associateId: string
+  associateName: string
+  storeId: string
+  storeNumber: string
+  pointsTotal: number
+}>> {
+  const { data, error } = await (supabase as any)
+    .from("associate_rankings")
+    .select(`
+      associate_id, associate_name, store_id, points_total,
+      stores!store_id(store_number)
+    `)
+    .eq("district_id", districtId)
+    .eq("is_predator", true)
+    .order("points_total", { ascending: false })
+
+  if (error || !data) return []
+
+  return data.map((r: any) => ({
+    associateId: r.associate_id,
+    associateName: r.associate_name,
+    storeId: r.store_id,
+    storeNumber: r.stores?.store_number ?? "?",
+    pointsTotal: r.points_total,
+  }))
+}
+
+// â”€â”€ The Lobby â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+export interface LobbySquadMember {
+  associateId: string
+  associateName: string
+  scheduledStart: string
+  scheduledEnd: string
+  isDeployed: boolean
+  currentStation: string | null
+  isExtended: boolean
+  tier: string
+  isPredator: boolean
+}
+
+/**
+ * Fetch squad data for the Lobby screen.
+ * Returns associates scheduled for the same shift bucket as the current associate.
+ */
+export async function fetchLobbySquad(
+  storeId: string,
+  shiftDate: string,
+  shiftBucket: "6a-2p" | "2p-10p" | "10p-6a"
+): Promise<LobbySquadMember[]> {
+  // Get scheduled associates for this shift bucket
+  const { data: scheduled } = await (supabase as any)
+    .from("schedule_entries")
+    .select("associate_id, start_time, end_time, associates!associate_id(name)")
+    .eq("store_id", storeId)
+    .eq("shift_date", shiftDate)
+
+  if (!scheduled) return []
+
+  // Filter to same shift bucket by time range
+  const bucketRanges: Record<string, { start: number; end: number }> = {
+    "6a-2p": { start: 6, end: 14 },
+    "2p-10p": { start: 14, end: 22 },
+    "10p-6a": { start: 22, end: 30 }, // 30 = 6am next day
+  }
+  const range = bucketRanges[shiftBucket]
+
+  const inBucket = scheduled.filter((s: any) => {
+    const startHour = new Date(s.start_time).getHours()
+    return startHour >= range.start && startHour < (range.end > 24 ? 24 : range.end)
+  })
+
+  const associateIds = inBucket.map((s: any) => s.associate_id)
+
+  // Get active shifts (deployed)
+  const { data: activeShifts } = await (supabase as any)
+    .from("active_shifts")
+    .select("associate_id, station, is_extended")
+    .eq("store_id", storeId)
+    .eq("is_active", true)
+    .in("associate_id", associateIds)
+
+  // Get rankings for tier display
+  const { data: rankings } = await (supabase as any)
+    .from("associate_rankings")
+    .select("associate_id, tier, is_predator")
+    .eq("store_id", storeId)
+    .in("associate_id", associateIds)
+
+  const activeMap: Record<string, any> = {}
+  for (const a of activeShifts ?? []) activeMap[a.associate_id] = a
+
+  const rankingMap: Record<string, any> = {}
+  for (const r of rankings ?? []) rankingMap[r.associate_id] = r
+
+  return inBucket.map((s: any) => ({
+    associateId: s.associate_id,
+    associateName: (s as any).associates?.name ?? "Unknown",
+    scheduledStart: s.start_time,
+    scheduledEnd: s.end_time,
+    isDeployed: !!activeMap[s.associate_id],
+    currentStation: activeMap[s.associate_id]?.station ?? null,
+    isExtended: activeMap[s.associate_id]?.is_extended ?? false,
+    tier: rankingMap[s.associate_id]?.tier ?? "Platinum",
+    isPredator: rankingMap[s.associate_id]?.is_predator ?? false,
+  }))
+}
+
+/**
+ * Fetch extended associates from the PREVIOUS shift bucket.
+ * These are people who were scheduled for the last shift but are still active.
+ */
+export async function fetchExtendedAssociates(storeId: string): Promise<Array<{
+  associateId: string
+  associateName: string
+  station: string
+  extendedSince: string
+}>> {
+  const { data } = await (supabase as any)
+    .from("active_shifts")
+    .select("associate_id, station, updated_at, associates!associate_id(name)")
+    .eq("store_id", storeId)
+    .eq("is_active", true)
+    .eq("is_extended", true)
+
+  if (!data) return []
+
+  return data.map((s: any) => ({
+    associateId: s.associate_id,
+    associateName: s.associates?.name ?? "Unknown",
+    station: s.station,
+    extendedSince: s.updated_at,
+  }))
+}
+
+/**
+ * Get the current associate's scheduled start time for today.
+ * Returns null if no schedule entry found.
+ */
+export async function fetchAssociateScheduleToday(
+  associateId: string,
+  storeId: string
+): Promise<{ startTime: string; endTime: string } | null> {
+  const today = new Date().toISOString().split("T")[0]
+
+  const { data } = await (supabase as any)
+    .from("schedule_entries")
+    .select("start_time, end_time")
+    .eq("associate_id", associateId)
+    .eq("store_id", storeId)
+    .eq("shift_date", today)
+    .maybeSingle()
+
+  if (!data) return null
+  return { startTime: data.start_time, endTime: data.end_time }
+}
+
+/**
+ * Determine shift bucket from a time string.
+ */
+export function getShiftBucketFromTime(
+  timeStr: string
+): "6a-2p" | "2p-10p" | "10p-6a" {
+  const hour = new Date(timeStr).getHours()
+  if (hour >= 6 && hour < 14) return "6a-2p"
+  if (hour >= 14 && hour < 22) return "2p-10p"
+  return "10p-6a"
+}
+
+// â”€â”€ Supervisor Personal Metrics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function fetchSupervisorPersonalMetrics(
   storeId: string,
@@ -3900,7 +4768,7 @@ export async function fetchSupervisorPersonalMetrics(
   }
 }
 
-// ── Regional Admin ────────────────────────────────────────────────────────
+// â”€â”€ Regional Admin â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface RegionSummary {
   id: string
@@ -4050,13 +4918,13 @@ export async function fetchRegionalMetrics(
   }
 }
 
-// ── Respawn Protocol ──────────────────────────────────────────────────────
+// â”€â”€ Respawn Protocol â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const RESPAWN_PIN_TTL_SECONDS = 300 // 5 minutes
 
 /**
  * Generate a device fingerprint for binding the PIN to a device.
- * Not cryptographically strong — just a basic uniqueness signal.
+ * Not cryptographically strong â€” just a basic uniqueness signal.
  */
 function generateDeviceFingerprint(): string {
   const ua = navigator.userAgent
@@ -4220,7 +5088,7 @@ export async function authorizeRespawn(
 }
 
 /**
- * Complete the respawn — called after associate sets new password + passkey.
+ * Complete the respawn â€” called after associate sets new password + passkey.
  * Updates the auth credentials and marks the PIN as used.
  */
 export async function completeRespawn(
@@ -4244,5 +5112,864 @@ export async function completeRespawn(
     payload: { eeid },
   })
 
+  return true
+}
+
+// â”€â”€ OPS1: Shift Extension â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+export async function extendShift(
+  associateId: string,
+  storeId: string,
+  extensionMinutes: number,
+  reason: "extending" | "leaving_soon"
+): Promise<boolean> {
+  // Get current shift to find scheduled_end_time
+  const { data: shift } = await supabase
+    .from("active_shifts")
+    .select("scheduled_end_time, expires_at")
+    .eq("associate_id", associateId)
+    .eq("store_id", storeId)
+    .eq("is_active", true)
+    .maybeSingle()
+
+  // Extend from scheduled_end_time if available, otherwise from now
+  const baseTime = shift?.scheduled_end_time
+    ? new Date(shift.scheduled_end_time)
+    : new Date()
+
+  const newExpiry = new Date(
+    baseTime.getTime() + extensionMinutes * 60 * 1000
+  ).toISOString()
+
+  const { error } = await supabase
+    .from("active_shifts")
+    .update({
+      expires_at: newExpiry,
+      is_extended: true,
+      extension_reason: reason === "extending"
+        ? `Extended ${extensionMinutes} minutes past scheduled end`
+        : "Wrapping up â€” leaving soon",
+    })
+    .eq("associate_id", associateId)
+    .eq("store_id", storeId)
+    .eq("is_active", true)
+
+  return !error
+}
+
+export async function closeShiftEarly(
+  associateId: string,
+  storeId: string
+): Promise<boolean> {
+  const { error } = await (supabase as any)
+    .from("active_shifts")
+    .update({
+      is_active: false,
+      expires_at: new Date().toISOString(),
+    })
+    .eq("associate_id", associateId)
+    .eq("store_id", storeId)
+    .eq("is_active", true)
+
+  return !error
+}
+
+/**
+ * Check if an associate's shift has ended but they're still active.
+ * Returns minutes past scheduled end, or 0 if not overdue.
+ */
+export async function checkShiftOverdue(
+  associateId: string,
+  storeId: string
+): Promise<number> {
+  const { data } = await (supabase as any)
+    .from("active_shifts")
+    .select("scheduled_end_time, is_extended")
+    .eq("associate_id", associateId)
+    .eq("store_id", storeId)
+    .eq("is_active", true)
+    .maybeSingle()
+
+  if (!data?.scheduled_end_time || data.is_extended) return 0
+
+  const endTime = new Date(data.scheduled_end_time).getTime()
+  const now = Date.now()
+  const overdueMs = now - endTime
+
+  return overdueMs > 0 ? Math.floor(overdueMs / 60000) : 0
+}
+
+// â”€â”€ OPS2: Holdover Protocol â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+export async function initiateHoldover(
+  associateId: string,
+  storeId: string,
+  shiftBucket: "6a-2p" | "2p-10p" | "10p-6a"
+): Promise<string | null> {
+  // Extend the associate's shift by 2 hours
+  await extendShift(associateId, storeId, 120, "extending")
+
+  const { data, error } = await (supabase as any)
+    .from("holdover_events")
+    .insert({
+      store_id: storeId,
+      associate_id: associateId,
+      shift_bucket: shiftBucket,
+      shift_date: new Date().toISOString().split("T")[0],
+    })
+    .select("id")
+    .maybeSingle()
+
+  if (error || !data) return null
+
+  // Notify all supervisors on shift
+  const { data: supervisors } = await (supabase as any)
+    .from("active_shifts")
+    .select("associate_id, associates!associate_id(role_rank)")
+    .eq("store_id", storeId)
+    .eq("is_active", true)
+    .neq("associate_id", associateId)
+
+  for (const s of supervisors ?? []) {
+    if ((s as any).associates?.role_rank >= 2) {
+      await (supabase as any).from("pings").insert({
+        store_id: storeId,
+        from_associate_id: associateId,
+        to_associate_id: s.associate_id,
+        message: "No relief for next shift. Holdover protocol active. Who can I call?",
+        ping_type: "direct",
+      })
+    }
+  }
+
+  return data.id
+}
+
+export async function resolveHoldover(
+  holdoverId: string,
+  reliefAssociateId: string
+): Promise<boolean> {
+  const { error } = await (supabase as any)
+    .from("holdover_events")
+    .update({
+      resolved_at: new Date().toISOString(),
+      relief_associate_id: reliefAssociateId,
+    })
+    .eq("id", holdoverId)
+
+  return !error
+}
+
+// â”€â”€ OPS3: Split Shift â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+export async function markSplitShiftDeparture(
+  associateId: string,
+  storeId: string,
+  returnTime: string
+): Promise<boolean> {
+  const { error } = await (supabase as any)
+    .from("active_shifts")
+    .update({
+      is_active: false,
+      is_split_shift: true,
+      split_return_time: returnTime,
+    })
+    .eq("associate_id", associateId)
+    .eq("store_id", storeId)
+    .eq("is_active", true)
+
+  return !error
+}
+
+export async function markSplitShiftReturn(
+  associateId: string,
+  storeId: string
+): Promise<boolean> {
+  const { error } = await (supabase as any)
+    .from("active_shifts")
+    .update({
+      is_active: true,
+      expires_at: new Date(Date.now() + 10 * 60 * 60 * 1000).toISOString(),
+    })
+    .eq("associate_id", associateId)
+    .eq("store_id", storeId)
+    .eq("is_split_shift", true)
+
+  return !error
+}
+
+// â”€â”€ OPS4: Early Departure â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+export async function initiateEarlyDeparture(
+  associateId: string,
+  storeId: string,
+  reason: string
+): Promise<boolean> {
+  // Orphan all assigned incomplete tasks
+  await (supabase as any)
+    .from("tasks")
+    .update({ is_orphaned: true, assigned_to_associate_id: null })
+    .eq("assigned_to_associate_id", associateId)
+    .eq("store_id", storeId)
+    .eq("is_completed", false)
+
+  // Notify supervisor
+  const { data: supervisors } = await (supabase as any)
+    .from("active_shifts")
+    .select("associate_id, associates!associate_id(role_rank)")
+    .eq("store_id", storeId)
+    .eq("is_active", true)
+    .neq("associate_id", associateId)
+
+  for (const s of supervisors ?? []) {
+    if ((s as any).associates?.role_rank >= 2) {
+      await (supabase as any).from("pings").insert({
+        store_id: storeId,
+        from_associate_id: associateId,
+        to_associate_id: s.associate_id,
+        message: `Early departure: ${reason}. Their tasks have been orphaned.`,
+        ping_type: "direct",
+      })
+    }
+  }
+
+  // Close the shift
+  await closeShiftEarly(associateId, storeId)
+  return true
+}
+
+// â”€â”€ Break System â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+const BREAK_DURATION_MINUTES = 30
+
+/**
+ * Check if an associate can take their break right now.
+ * T2+ requires another T2+ to be present and not on break.
+ */
+export async function canTakeBreak(
+  associateId: string,
+  storeId: string,
+  roleRank: number
+): Promise<{
+  allowed: boolean
+  coveringName?: string
+  reason?: string
+}> {
+  // Check current shift status
+  const { data: shift } = await supabase
+    .from("active_shifts")
+    .select("break_taken, on_break")
+    .eq("associate_id", associateId)
+    .eq("store_id", storeId)
+    .eq("is_active", true)
+    .maybeSingle()
+
+  if (!shift) {
+    return { allowed: false, reason: "No active shift found." }
+  }
+
+  if (shift.break_taken) {
+    return { allowed: false, reason: "You've already taken your break this shift." }
+  }
+
+  if (shift.on_break) {
+    return { allowed: false, reason: "You're already on break." }
+  }
+
+  // T2+ constraint â€” need another supervisor on floor
+  if (roleRank >= 2) {
+    const { data: otherActive } = await supabase
+      .from("active_shifts")
+      .select(`
+        associate_id,
+        on_break,
+        associates!associate_id(name, role_rank)
+      `)
+      .eq("store_id", storeId)
+      .eq("is_active", true)
+      .neq("associate_id", associateId)
+
+    const coveringSup = (otherActive ?? []).find((s: any) => {
+      const rank = s.associates?.role_rank ?? 0
+      return rank >= 2 && !s.on_break
+    })
+
+    if (!coveringSup) {
+      return {
+        allowed: false,
+        reason: "No other supervisor on floor. You can't take a break until relief arrives.",
+      }
+    }
+
+    return {
+      allowed: true,
+      coveringName: (coveringSup as any).associates?.name ?? "your cover",
+    }
+  }
+
+  return { allowed: true }
+}
+
+/**
+ * Start a break for an associate.
+ */
+export async function startBreak(
+  associateId: string,
+  storeId: string
+): Promise<boolean> {
+  const { error } = await supabase
+    .from("active_shifts")
+    .update({
+      on_break: true,
+      break_started_at: new Date().toISOString(),
+    })
+    .eq("associate_id", associateId)
+    .eq("store_id", storeId)
+    .eq("is_active", true)
+
+  return !error
+}
+
+/**
+ * End a break for an associate.
+ * Marks break_taken so they can't take another.
+ */
+export async function endBreak(
+  associateId: string,
+  storeId: string
+): Promise<boolean> {
+  const { error } = await supabase
+    .from("active_shifts")
+    .update({
+      on_break: false,
+      break_ended_at: new Date().toISOString(),
+      break_taken: true,
+    })
+    .eq("associate_id", associateId)
+    .eq("store_id", storeId)
+    .eq("is_active", true)
+
+  return !error
+}
+
+/**
+ * Get break status for an associate.
+ * Returns seconds remaining on break, or 0 if not on break.
+ */
+export async function getBreakStatus(
+  associateId: string,
+  storeId: string
+): Promise<{
+  onBreak: boolean
+  breakTaken: boolean
+  secondsRemaining: number
+  breakStartedAt: string | null
+}> {
+  const { data } = await supabase
+    .from("active_shifts")
+    .select("on_break, break_taken, break_started_at")
+    .eq("associate_id", associateId)
+    .eq("store_id", storeId)
+    .eq("is_active", true)
+    .maybeSingle()
+
+  if (!data) return { onBreak: false, breakTaken: false, secondsRemaining: 0, breakStartedAt: null }
+
+  let secondsRemaining = 0
+  if (data.on_break && data.break_started_at) {
+    const elapsed = Math.floor((Date.now() - new Date(data.break_started_at).getTime()) / 1000)
+    secondsRemaining = Math.max(0, BREAK_DURATION_MINUTES * 60 - elapsed)
+  }
+
+  return {
+    onBreak: data.on_break ?? false,
+    breakTaken: data.break_taken ?? false,
+    secondsRemaining,
+    breakStartedAt: data.break_started_at,
+  }
+}
+
+/**
+ * Send break-end ping to associate.
+ * Called when break timer hits 0.
+ */
+export async function sendBreakEndPing(
+  associateId: string,
+  storeId: string
+): Promise<void> {
+  await supabase.from("pings").insert({
+    store_id: storeId,
+    from_associate_id: associateId,
+    to_associate_id: associateId,
+    message: "Break time's up. Get back out there. ðŸ’ª",
+    ping_type: "direct",
+  })
+
+  // Auto-end the break
+  await endBreak(associateId, storeId)
+}
+
+// â”€â”€ Placement Match â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+/**
+ * Check if an associate needs to complete placement.
+ */
+export async function needsPlacement(profileId: string): Promise<boolean> {
+  const { data } = await supabase
+    .from("profiles")
+    .select("placement_complete, placement_skipped")
+    .eq("id", profileId)
+    .maybeSingle()
+
+  if (!data) return false
+  return !data.placement_complete && !data.placement_skipped
+}
+
+/**
+ * Mark placement as complete.
+ */
+export async function completePlacement(profileId: string): Promise<void> {
+  await supabase
+    .from("profiles")
+    .update({
+      placement_complete: true,
+      placement_completed_at: new Date().toISOString(),
+    })
+    .eq("id", profileId)
+}
+
+/**
+ * Skip placement (for experienced transfers).
+ */
+export async function skipPlacement(profileId: string): Promise<void> {
+  await supabase
+    .from("profiles")
+    .update({
+      placement_skipped: true,
+      placement_complete: true,
+    })
+    .eq("id", profileId)
+}
+/**
+ * Notify supervisor that an associate is beginning onboarding.
+ * Also auto-assigns a placeholder task to the active supervisor.
+ */
+export async function notifyPlacementStarted(
+  associateName: string,
+  storeId: string,
+  associateId: string
+): Promise<void> {
+  // Find active supervisor on floor
+  const { data: supervisors } = await supabase
+    .from("active_shifts")
+    .select(`
+      associate_id,
+      associates!associate_id(name, role_rank)
+    `)
+    .eq("store_id", storeId)
+    .eq("is_active", true)
+    .neq("associate_id", associateId)
+
+  const supervisor = (supervisors ?? []).find(
+    (s: any) => (s.associates?.role_rank ?? 0) >= 2
+  )
+
+  if (!supervisor) return
+
+  // Ping supervisor â€” onboarding started
+  await supabase.from("pings").insert({
+    store_id: storeId,
+    from_associate_id: associateId,
+    to_associate_id: supervisor.associate_id,
+    message: `User: ${associateName} is beginning onboarding.`,
+    ping_type: "direct",
+  })
+
+  // Auto-assign placeholder task to supervisor
+  await supabase.from("tasks").insert({
+    store_id: storeId,
+    task_name: `Guide ${associateName} through onboarding`,
+    archetype: "MOD",
+    priority: "normal",
+    is_sticky: false,
+    is_completed: false,
+    assigned_to: (supervisor as any).associates?.name ?? "Supervisor",
+    assigned_to_associate_id: supervisor.associate_id,
+    queue_position: 1,
+    base_points: 0,
+    shift_bucket: "any",
+    lifecycle_state: "active",
+  })
+}
+
+/**
+ * Notify supervisor that onboarding is complete.
+ */
+export async function notifyPlacementComplete(
+  associateName: string,
+  storeId: string,
+  associateId: string
+): Promise<void> {
+  const { data: supervisors } = await supabase
+    .from("active_shifts")
+    .select(`associate_id, associates!associate_id(role_rank)`)
+    .eq("store_id", storeId)
+    .eq("is_active", true)
+    .neq("associate_id", associateId)
+
+  const supervisor = (supervisors ?? []).find(
+    (s: any) => (s.associates?.role_rank ?? 0) >= 2
+  )
+
+  if (!supervisor) return
+
+  await supabase.from("pings").insert({
+    store_id: storeId,
+    from_associate_id: associateId,
+    to_associate_id: supervisor.associate_id,
+    message: `User: ${associateName} has finished onboarding.`,
+    ping_type: "direct",
+  })
+}
+
+/**
+ * Notify supervisor that the associate is dropping into their first real match.
+ */
+export async function notifyFirstDrop(
+  associateName: string,
+  storeId: string,
+  associateId: string
+): Promise<void> {
+  const { data: supervisors } = await supabase
+    .from("active_shifts")
+    .select(`associate_id, associates!associate_id(role_rank)`)
+    .eq("store_id", storeId)
+    .eq("is_active", true)
+    .neq("associate_id", associateId)
+
+  const supervisor = (supervisors ?? []).find(
+    (s: any) => (s.associates?.role_rank ?? 0) >= 2
+  )
+
+  if (!supervisor) return
+
+  await supabase.from("pings").insert({
+    store_id: storeId,
+    from_associate_id: associateId,
+    to_associate_id: supervisor.associate_id,
+    message: `User: ${associateName} is dropping into their first real match. Wish them good luck! ðŸŽ®`,
+    ping_type: "direct",
+  })
+
+  // Auto-complete the onboarding task assigned to supervisor
+  await supabase
+    .from("tasks")
+    .update({ is_completed: true, lifecycle_state: "completed" })
+    .eq("store_id", storeId)
+    .eq("task_name", `Guide ${associateName} through onboarding`)
+    .eq("is_completed", false)
+}
+
+// â”€â”€ Task Lifecycle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+/**
+ * Check if a task lockout is currently active for a store and shift bucket.
+ */
+export async function checkLockoutActive(
+  storeId: string,
+  shiftBucket: string
+): Promise<boolean> {
+  const { data } = await supabase
+    .from("task_lockout_windows")
+    .select("lockout_start, lockout_end, is_active")
+    .eq("store_id", storeId)
+    .eq("shift_bucket", shiftBucket)
+    .eq("is_active", true)
+    .maybeSingle()
+
+  if (!data) return false
+
+  const now = new Date()
+  const currentTime = `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}`
+
+  return currentTime >= data.lockout_start && currentTime < data.lockout_end
+}
+
+/**
+ * Override lockout for this session (supervisor only).
+ */
+export async function overrideLockout(
+  storeId: string,
+  shiftBucket: string
+): Promise<boolean> {
+  const { error } = await supabase
+    .from("task_lockout_windows")
+    .update({ is_active: false })
+    .eq("store_id", storeId)
+    .eq("shift_bucket", shiftBucket)
+
+  return !error
+}
+
+/**
+ * Restore lockout after supervisor override.
+ */
+export async function restoreLockout(
+  storeId: string,
+  shiftBucket: string
+): Promise<boolean> {
+  const { error } = await supabase
+    .from("task_lockout_windows")
+    .update({ is_active: true })
+    .eq("store_id", storeId)
+    .eq("shift_bucket", shiftBucket)
+
+  return !error
+}
+
+/**
+ * Mark a task as partially complete with progress notes.
+ * Called during extraction when an associate can't finish.
+ */
+export async function markTaskPartial(
+  taskId: string,
+  progressPct: number,
+  progressNotes: string,
+  associateName: string
+): Promise<boolean> {
+  const { error } = await supabase
+    .from("tasks")
+    .update({
+      lifecycle_state: "partial",
+      progress_pct: progressPct,
+      progress_notes: progressNotes,
+      last_progress_by: associateName,
+      last_progress_at: new Date().toISOString(),
+      is_completed: false,
+      pending_verification: false,
+    })
+    .eq("id", taskId)
+
+  return !error
+}
+
+/**
+ * Fetch tasks for an associate filtered by their shift bucket.
+ * Shows: tasks for their bucket + 'any' tasks + inherited cross-shift-critical tasks.
+ * Excludes completed tasks from other buckets.
+ */
+export async function fetchTasksForShift(
+  storeId: string,
+  shiftBucket: string
+): Promise<any[]> {
+  const { data, error } = await supabase
+    .from("tasks")
+    .select("*")
+    .eq("store_id", storeId)
+    .eq("is_completed", false)
+    .or(`shift_bucket.eq.${shiftBucket},shift_bucket.eq.any,shift_bucket.is.null`)
+    .not("lifecycle_state", "eq", "completed")
+    .order("neglect_count", { ascending: false }) // neglected first
+    .order("queue_position", { ascending: true })
+
+  if (error || !data) return []
+  return data
+}
+
+function getNextBucket(
+  bucket: "6a-2p" | "2p-10p" | "10p-6a"
+): "6a-2p" | "2p-10p" | "10p-6a" {
+  const order: Array<"6a-2p" | "2p-10p" | "10p-6a"> = ["6a-2p", "2p-10p", "10p-6a"]
+  const idx = order.indexOf(bucket)
+  return order[(idx + 1) % 3]
+}
+
+/**
+ * The Neglect Engine.
+ * Run at the end of each shift bucket.
+ * Escalates unfinished tasks through the lifecycle states.
+ */
+export async function runNeglectEngine(
+  storeId: string,
+  endingBucket: "6a-2p" | "2p-10p" | "10p-6a"
+): Promise<void> {
+  // Find all unfinished tasks for this shift bucket
+  const { data: unfinished } = await supabase
+    .from("tasks")
+    .select("id, task_name, neglect_count, lifecycle_state, is_cross_shift_critical, progress_pct, progress_notes, last_progress_by, shift_bucket, last_neglected_at")
+    .eq("store_id", storeId)
+    .eq("is_completed", false)
+    .eq("pending_verification", false)
+    .or(`shift_bucket.eq.${endingBucket},shift_bucket.is.null`)
+    .not("lifecycle_state", "in", '("completed","incident")')
+
+  if (!unfinished) return
+
+  const now = new Date().toISOString()
+
+  for (const task of unfinished) {
+    const newNeglectCount = task.neglect_count + 1
+
+    // Determine new lifecycle state
+    let newState: string
+    if (newNeglectCount >= 4) newState = "incident"
+    else if (newNeglectCount === 3) newState = "critical"
+    else if (newNeglectCount === 2) newState = "neglected"
+    else newState = "orphaned"
+
+    // Update the task
+    await supabase
+      .from("tasks")
+      .update({
+        lifecycle_state: newState,
+        neglect_count: newNeglectCount,
+        last_neglected_at: now,
+      })
+      .eq("id", task.id)
+
+    // Create incident record at 4+ neglects
+    if (newNeglectCount >= 4) {
+      const { data: existing } = await supabase
+        .from("task_incidents")
+        .select("id")
+        .eq("task_id", task.id)
+        .eq("is_resolved", false)
+        .maybeSingle()
+
+      if (!existing) {
+        await supabase.from("task_incidents").insert({
+          store_id: storeId,
+          task_id: task.id,
+          task_name: task.task_name,
+          shift_bucket: endingBucket,
+          neglect_count: newNeglectCount,
+          first_neglected_at: task.last_neglected_at ?? now,
+        })
+      }
+    }
+
+    // Handle cross-shift-critical tasks â€” copy to next shift's queue
+    if (task.is_cross_shift_critical && newState === "orphaned") {
+      const nextBucket = getNextBucket(endingBucket)
+
+      await supabase
+        .from("tasks")
+        .update({
+          shift_bucket: nextBucket,
+          inherited_from_bucket: endingBucket,
+          inherited_from_associate: task.last_progress_by ?? "Previous shift",
+          inherited_at: now,
+          lifecycle_state: "active",
+          neglect_count: newNeglectCount,
+        })
+      .eq("id", task.id)
+    }
+  }
+
+  // Ping supervisor about neglected/critical tasks
+  const neglected = unfinished.filter(t => t.neglect_count + 1 >= 2)
+  if (neglected.length > 0) {
+    const { data: supervisors } = await supabase
+      .from("active_shifts")
+      .select("associate_id")
+      .eq("store_id", storeId)
+      .eq("is_active", true)
+
+    for (const sup of supervisors ?? []) {
+      await supabase.from("pings").insert({
+        store_id: storeId,
+        from_associate_id: sup.associate_id,
+        to_associate_id: sup.associate_id,
+        message: `${neglected.length} task${neglected.length !== 1 ? "s" : ""} neglected from ${endingBucket} shift. Check the task queue.`,
+        ping_type: "direct",
+      })
+    }
+  }
+}
+
+/**
+ * Fetch task incidents for Store Manager work order feed.
+ */
+export async function fetchTaskIncidents(storeId: string): Promise<Array<{
+  id: string
+  taskName: string
+  shiftBucket: string
+  neglectCount: number
+  firstNeglectedAt: string
+  isResolved: boolean
+}>> {
+  const { data, error } = await supabase
+    .from("task_incidents")
+    .select("*")
+    .eq("store_id", storeId)
+    .order("neglect_count", { ascending: false })
+
+  if (error || !data) return []
+
+  return data.map(i => ({
+    id: i.id,
+    taskName: i.task_name,
+    shiftBucket: i.shift_bucket,
+    neglectCount: i.neglect_count,
+    firstNeglectedAt: i.first_neglected_at,
+    isResolved: i.is_resolved,
+  }))
+}
+
+export async function resolveTaskIncident(
+  incidentId: string,
+  resolvedById: string,
+  notes: string
+): Promise<boolean> {
+  const { error } = await supabase
+    .from("task_incidents")
+    .update({
+      is_resolved: true,
+      resolved_by: resolvedById,
+      resolved_at: new Date().toISOString(),
+      resolution_notes: notes,
+    })
+    .eq("id", incidentId)
+
+  return !error
+}
+
+export async function closeShift(
+  associateId: string,
+  storeId: string
+): Promise<boolean> {
+  // Get the shift bucket before closing
+  const { data: shift } = await supabase
+    .from("active_shifts")
+    .select("shift_bucket")
+    .eq("associate_id", associateId)
+    .eq("store_id", storeId)
+    .eq("is_active", true)
+    .maybeSingle()
+
+  // Close the shift
+  const { error } = await supabase
+    .from("active_shifts")
+    .update({ is_active: false, expires_at: new Date().toISOString() })
+    .eq("associate_id", associateId)
+    .eq("store_id", storeId)
+
+  if (error) return false
+
+  // Check if this was the LAST active associate for this shift bucket
+  if (shift?.shift_bucket) {
+    const { count } = await supabase
+      .from("active_shifts")
+      .select("*", { count: "exact", head: true })
+      .eq("store_id", storeId)
+      .eq("is_active", true)
+      .eq("shift_bucket", shift.shift_bucket)
+
+    // If no more active associates in this bucket, run neglect engine
+    if ((count ?? 0) === 0) {
+      await runNeglectEngine(storeId, shift.shift_bucket as "6a-2p" | "2p-10p" | "10p-6a")
+    }
+  }
+  
   return true
 }

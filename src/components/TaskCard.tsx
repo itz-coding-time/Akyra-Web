@@ -87,10 +87,53 @@ export function TaskCard({ task, isPersonal, onComplete, onClearOrphan, onHold }
               Critical
             </span>
           )}
+
+          {(task as any).lifecycle_state === "neglected" && (
+            <div className="flex items-center gap-1 mt-1">
+              <div className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse" />
+              <span className="text-[9px] font-mono text-orange-400 uppercase tracking-widest">
+                Neglected · {(task as any).neglect_count} shift{(task as any).neglect_count !== 1 ? "s" : ""}
+              </span>
+            </div>
+          )}
+
+          {(task as any).lifecycle_state === "critical" && (
+            <div className="flex items-center gap-1 mt-1">
+              <div className="w-1.5 h-1.5 rounded-full bg-[#E63946] animate-pulse" />
+              <span className="text-[9px] font-mono text-[#E63946] uppercase tracking-widest">
+                Critical · {(task as any).neglect_count} shifts
+              </span>
+            </div>
+          )}
         </div>
+
+        {(task as any).inherited_from_bucket && (
+          <p className="text-[9px] font-mono text-white/20 mt-0.5">
+            Picked up from {(task as any).inherited_from_bucket}
+            {(task as any).inherited_from_associate && ` · ${(task as any).inherited_from_associate}`}
+          </p>
+        )}
 
         {task.task_description && (
           <p className="text-xs text-akyra-secondary mt-1">{task.task_description}</p>
+        )}
+
+        {(task as any).progress_pct > 0 && (task as any).lifecycle_state === "partial" && (
+          <div className="mt-2 space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="text-[9px] font-mono text-white/30">Progress</span>
+              <span className="text-[9px] font-mono text-white/50">{(task as any).progress_pct}%</span>
+            </div>
+            <div className="h-1 bg-white/10 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-white/40 rounded-full"
+                style={{ width: `\${(task as any).progress_pct}%` }}
+              />
+            </div>
+            {(task as any).progress_notes && (
+              <p className="text-[9px] text-white/30 font-mono">{(task as any).progress_notes}</p>
+            )}
+          </div>
         )}
 
         {isOrphaned && onClearOrphan && (

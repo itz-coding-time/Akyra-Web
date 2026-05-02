@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback, useRef } from "react"
-import { calculateShiftProgress, isAssociateOnClock } from "../lib/timeEngine"
 import { calculateAndSaveShiftResults, getShiftBucket } from "../lib"
 import { supabase } from "../lib/supabase"
 
@@ -38,7 +37,7 @@ async function saveShiftResults(
 
 export function useShiftLifecycle(
   startTime: string,
-  endTime: string,
+  _endTime: string,
   storeId: string,
   associateId: string
 ) {
@@ -48,28 +47,42 @@ export function useShiftLifecycle(
   const [warningDismissed, setWarningDismissed] = useState(false)
   const resultsSavedRef = useRef(false)
 
-  const calculatePhase = useCallback(() => {
-    const onClock = isAssociateOnClock(startTime, endTime)
-    if (!onClock) {
+  const calculatePhase = useCallback(async () => {
+    const { data: shift, error } = await supabase
+      .from("active_shifts")
+      .select("expires_at, scheduled_end_time, is_extended, on_break")
+      .eq("associate_id", associateId)
+      .eq("store_id", storeId)
+      .eq("is_active", true)
+      .maybeSingle()
+
+    if (error || !shift) {
       setPhase("pre-shift")
       return
     }
 
-    const progress = calculateShiftProgress(startTime, endTime)
-    const totalMins = getTotalShiftMinutes(startTime, endTime)
-    const remaining = Math.round(totalMins * (1 - progress))
+    if ((shift as any).on_break) {
+      setPhase("active")
+      setMinutesRemaining(30) // dummy
+      return
+    }
+
+    const now = Date.now()
+    const expiresAt = new Date((shift as any).expires_at).getTime()
+    const timeLeftMs = expiresAt - now
+    const remaining = Math.max(0, Math.floor(timeLeftMs / 60000))
     setMinutesRemaining(remaining)
 
-    if (remaining <= 0) {
+    if (timeLeftMs <= 0) {
       setPhase("complete")
-    } else if (remaining <= 15) {
+    } else if (timeLeftMs <= 15 * 60 * 1000) {
       setPhase(prev => {
         if (prev !== "final-fifteen" && !warningDismissed) {
           setShowWarning(true)
         }
         return "final-fifteen"
       })
-    } else if (remaining <= 60) {
+    } else if (timeLeftMs <= 60 * 60 * 1000) {
       setPhase(prev => {
         if (prev === "active" && !warningDismissed) {
           setShowWarning(true)
@@ -79,11 +92,11 @@ export function useShiftLifecycle(
     } else {
       setPhase("active")
     }
-  }, [startTime, endTime, warningDismissed])
+  }, [associateId, storeId, warningDismissed])
 
   useEffect(() => {
     calculatePhase()
-    const interval = setInterval(calculatePhase, 60_000) // check every minute
+    const interval = setInterval(calculatePhase, 15_000) // check every 15s for better accuracy
     return () => clearInterval(interval)
   }, [calculatePhase])
 
@@ -116,11 +129,3 @@ export function useShiftLifecycle(
   }
 }
 
-function getTotalShiftMinutes(startTime: string, endTime: string): number {
-  const [sh, sm] = startTime.split(":").map(Number)
-  const [eh, em] = endTime.split(":").map(Number)
-  const startMins = sh * 60 + sm
-  let endMins = eh * 60 + em
-  if (endMins <= startMins) endMins += 24 * 60
-  return endMins - startMins
-}

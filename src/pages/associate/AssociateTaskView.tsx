@@ -2,13 +2,32 @@ import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAssociateTasks, useEquipmentIssues, useCodeCheck } from "../../hooks"
 import { useAuth } from "../../context"
-import { createAssistanceRequest, submitAssociatePhoto, logSlowCompletionReason, getAssociateSpendableCards, spendCard } from "../../lib"
+import {
+  createAssistanceRequest,
+  submitAssociatePhoto,
+  logSlowCompletionReason,
+  getAssociateSpendableCards,
+  spendCard,
+  fetchAssociateRanking,
+  checkShiftOverdue,
+  checkLockoutActive,
+  getShiftBucket,
+} from "../../lib"
+import { TierBadge } from "../../components/TierBadge"
 import { TaskCard } from "../../components/TaskCard"
 import { FlipChecklist } from "../../components/FlipChecklist"
 import { PullList } from "../../components/PullList"
 import { LoadingSpinner } from "../../components/LoadingSpinner"
 import { CodeCheckPanel } from "../../components/CodeCheckPanel"
 import { WhosWorkingPanel } from "../../components/WhosWorkingPanel"
+import {
+  ShiftExtensionModal,
+  EarlyDepartureModal,
+  BreakScreen,
+  TakeBreakModal,
+  LockoutScreen,
+  PartialCompletionModal,
+} from "../../components"
 import { RadialMenu } from "../../components/gamification/RadialMenu"
 import { ArchetypeOfferModal } from "../../components/gamification/ArchetypeOfferModal"
 import { SOPViewer } from "../../components/gamification/SOPViewer"
@@ -16,7 +35,7 @@ import { PingBanner } from "../../components/PingBanner"
 import { PhotoCapture } from "../../components/gamification/PhotoCapture"
 import { SlowReasonModal } from "../../components/gamification/SlowReasonModal"
 import { BurnCardModal } from "../../components/gamification/BurnCardModal"
-import { Wrench, AlertTriangle } from "lucide-react"
+import { Wrench, AlertTriangle, Coffee } from "lucide-react"
 import type { FloatMode } from "../../hooks"
 import type { Associate } from "../../types"
 import type { Database } from "../../types/database.types"
@@ -100,12 +119,82 @@ export function AssociateTaskView({
   const [cards, setCards] = useState({ burnCards: 0, squadCards: 0, total: 0 })
   const [burnCardTask, setBurnCardTask] = useState<{ taskId: string; taskName: string } | null>(null)
   const [offeringTask, setOfferingTask] = useState<{ taskId: string; taskName: string } | null>(null)
+  const [ranking, setRanking] = useState<any>(null)
+  const [showProfile, setShowProfile] = useState(false)
+  const [minutesOverdue, setMinutesOverdue] = useState(0)
+  const [showExtension, setShowExtension] = useState(false)
+  const [showEarlyDeparture, setShowEarlyDeparture] = useState(false)
+  const [breakStatus, setBreakStatus] = useState<{
+    onBreak: boolean
+    breakTaken: boolean
+    secondsRemaining: number
+    breakStartedAt: string | null
+  } | null>(null)
+  const [showBreakModal, setShowBreakModal] = useState(false)
+
+  const [lockoutActive, setLockoutActive] = useState(false)
+  const [lockoutOverridden, setLockoutOverridden] = useState(false)
+  const [showPartialModal, setShowPartialModal] = useState<{
+    taskId: string
+    taskName: string
+  } | null>(null)
+
+  const shiftBucket = getShiftBucket(associate.default_start_time)
+
+  // Check shift overdue every 5 minutes
+  useEffect(() => {
+    async function checkOverdue() {
+      const minutes = await checkShiftOverdue(associate.id, associate.store_id)
+      if (minutes > 0 && !showExtension) {
+        setMinutesOverdue(minutes)
+        setShowExtension(true)
+      }
+    }
+
+    checkOverdue()
+    const interval = setInterval(checkOverdue, 5 * 60 * 1000)
+    return () => clearInterval(interval)
+  }, [associate.id, associate.store_id, showExtension])
+
+  // Check lockout every minute
+  useEffect(() => {
+    if (!associate.store_id || !shiftBucket) return
+
+    async function checkLockout() {
+      const active = await checkLockoutActive(associate.store_id, shiftBucket)
+      setLockoutActive(active && !lockoutOverridden)
+    }
+
+    checkLockout()
+    const interval = setInterval(checkLockout, 60 * 1000)
+    return () => clearInterval(interval)
+  }, [associate.store_id, shiftBucket, lockoutOverridden])
+
+  useEffect(() => {
+    if (associate.id && associate.store_id) {
+      fetchAssociateRanking(associate.store_id, associate.id).then(setRanking)
+    }
+  }, [associate.id, associate.store_id])
 
   useEffect(() => {
     if (associate.profile_id) {
       getAssociateSpendableCards(associate.profile_id).then(setCards)
     }
   }, [associate.profile_id])
+
+  // Load break status
+  useEffect(() => {
+    if (!associate.id || !associate.store_id) return
+    async function loadBreakStatus() {
+      const { getBreakStatus } = await import("../../lib")
+      const status = await getBreakStatus(associate.id, associate.store_id)
+      setBreakStatus(status)
+    }
+
+    loadBreakStatus()
+    const interval = setInterval(loadBreakStatus, 30000)
+    return () => clearInterval(interval)
+  }, [associate.id, associate.store_id])
 
   async function handleRadialAction(
     direction: "up" | "down" | "left" | "right" | "up-left" | "left-hold",
@@ -167,6 +256,36 @@ export function AssociateTaskView({
     )
   }
 
+  // Show lockout screen if active:
+  if (lockoutActive) {
+    return (
+      <div className="min-h-screen bg-black flex flex-col">
+        <LockoutScreen
+          storeId={associate.store_id}
+          shiftBucket={shiftBucket}
+          lockoutEndsAt="14:00"
+          isSupervisor={(associate.role_rank ?? 1) >= 2}
+          supervisorAssociateId={associate.id}
+          onOverride={() => setLockoutOverridden(true)}
+        />
+      </div>
+    )
+  }
+
+  // If on break, show BreakScreen instead of task view
+  if (breakStatus?.onBreak && breakStatus.breakStartedAt) {
+    return (
+      <BreakScreen
+        associateId={associate.id}
+        storeId={associate.store_id}
+        breakStartedAt={breakStatus.breakStartedAt}
+        onBreakEnd={() => {
+          setBreakStatus(prev => prev ? { ...prev, onBreak: false, breakTaken: true } : null)
+        }}
+      />
+    )
+  }
+
   // Apply phase-based task filtering
   const priorityFilter =
     phaseFilter === "final-fifteen" ? ["Critical"] :
@@ -192,10 +311,20 @@ export function AssociateTaskView({
       {/* Header */}
       <header className="flex items-center justify-between px-6 py-4 border-b border-akyra-border">
         <div>
-          <p className="font-bold text-white">{associate.name}</p>
-          <p className="text-[10px] font-mono uppercase tracking-widest text-akyra-secondary">
-            {isFloatStation ? `Float → ${floatMode}` : station}
-          </p>
+          <button
+            onClick={() => setShowProfile(true)}
+            className="flex items-center gap-2 text-left"
+          >
+            <div>
+              <p className="font-bold text-white">{associate.name}</p>
+              <p className="text-[10px] font-mono uppercase tracking-widest text-akyra-secondary">
+                {isFloatStation ? `Float → ${floatMode}` : station}
+              </p>
+            </div>
+            {ranking && (
+              <TierBadge tier={ranking.tier} isPredator={ranking.isPredator} size="sm" />
+            )}
+          </button>
         </div>
         <div className="flex items-center gap-3">
           {onLeaving && (
@@ -205,6 +334,26 @@ export function AssociateTaskView({
             >
               Leaving Shift
             </button>
+          )}
+          <button
+            onClick={() => setShowEarlyDeparture(true)}
+            className="text-xs font-mono uppercase tracking-widest text-akyra-secondary hover:text-[#E63946] transition-colors"
+          >
+            Leave early
+          </button>
+          {!breakStatus?.breakTaken && (
+            <button
+              onClick={() => setShowBreakModal(true)}
+              className="flex items-center gap-1 text-xs font-mono uppercase tracking-widest text-akyra-secondary hover:text-white transition-colors"
+            >
+              <Coffee className="w-3.5 h-3.5" />
+              Break
+            </button>
+          )}
+          {breakStatus?.breakTaken && (
+            <span className="text-[9px] font-mono text-white/20 uppercase tracking-widest hidden sm:inline-block">
+              Break Taken
+            </span>
           )}
           <button
             onClick={() => setShowIssueForm(!showIssueForm)}
@@ -296,6 +445,37 @@ export function AssociateTaskView({
       {/* Content */}
       <div className="px-6 py-6 space-y-8 pb-20 max-w-lg mx-auto">
 
+        {ranking?.isDesynced && (
+          <div className="bg-orange-500/10 border border-orange-500/30 rounded-xl p-4 space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="text-orange-400 text-sm">⚡</span>
+              <p className="text-sm font-semibold text-orange-400">Desync Detected</p>
+            </div>
+            <p className="text-xs text-white/60">
+              You've had some rough shifts lately. No worries — help your squad and you'll be back in sync.
+            </p>
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] font-mono text-white/40 uppercase tracking-widest">
+                  Assists to resync
+                </p>
+                <p className="text-[10px] font-mono text-white/60">
+                  {ranking.desyncAssistsCompleted}/{ranking.desyncAssistsNeeded}
+                </p>
+              </div>
+              <div className="h-1 bg-white/10 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-orange-500 rounded-full transition-all"
+                  style={{ width: `${(ranking.desyncAssistsCompleted / ranking.desyncAssistsNeeded) * 100}%` }}
+                />
+              </div>
+            </div>
+            <p className="text-[10px] text-white/30 font-mono">
+              Look for tasks being offered by your squad. Accept them. 2× points.
+            </p>
+          </div>
+        )}
+
         {/* Tasks */}
         <div className="space-y-2">
           {filteredMyTasks.concat(filteredArchetypeTasks).map(task => {
@@ -344,6 +524,14 @@ export function AssociateTaskView({
                   }
                   burnCards={0}
                 />
+                {phaseFilter && isPersonal && (
+                  <button
+                    onClick={() => setShowPartialModal({ taskId: task.id, taskName: task.task_name })}
+                    className="text-[10px] font-mono text-white/20 hover:text-white/40 transition-colors mt-1 block mx-auto"
+                  >
+                    Can't finish — hand off
+                  </button>
+                )}
               </div>
             )
           })}
@@ -485,6 +673,128 @@ export function AssociateTaskView({
             }
           }}
           onDismiss={() => setBurnCardTask(null)}
+        />
+      )}
+
+      {/* Profile Drawer */}
+      {showProfile && ranking && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center">
+          <div className="absolute inset-0 bg-black/70" onClick={() => setShowProfile(false)} />
+          <div className="relative w-full max-w-lg bg-akyra-surface border-t border-akyra-border rounded-t-2xl p-6 space-y-5">
+
+            <div className="text-center space-y-2">
+              <TierBadge tier={ranking.tier} isPredator={ranking.isPredator} size="lg" showPoints points={ranking.pointsTotal} />
+              <p className="text-white font-bold">{associate.name}</p>
+              {ranking.isPredator && (
+                <p className="text-[10px] font-mono text-yellow-400/60">
+                  Top 3 performer at this store
+                </p>
+              )}
+            </div>
+
+            {/* Points breakdown */}
+            <div className="space-y-2">
+              <p className="text-[10px] font-mono uppercase tracking-widest text-akyra-secondary">
+                Points Breakdown · 30 Days
+              </p>
+              {[
+                { label: "Tasks completed", value: ranking.pointsTotal - ranking.pointsAssists - (ranking.pointsKillLeader ?? 0) - (ranking.pointsMvp ?? 0) - (ranking.pointsVindicated ?? 0) },
+                { label: "Assists given (2×)", value: ranking.pointsAssists },
+                { label: "Kill Leader bonuses", value: ranking.pointsKillLeader ?? 0 },
+                { label: "MVP bonuses", value: ranking.pointsMvp ?? 0 },
+                { label: "Challenge vindicated", value: ranking.pointsVindicated ?? 0 },
+              ].filter(row => row.value > 0).map(row => (
+                <div key={row.label} className="flex items-center justify-between">
+                  <p className="text-xs text-akyra-secondary">{row.label}</p>
+                  <p className="text-xs font-mono text-white">+{row.value}</p>
+                </div>
+              ))}
+              <div className="h-px bg-akyra-border" />
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold text-white">Total</p>
+                <p className="text-xs font-mono font-bold text-white">{ranking.pointsTotal}</p>
+              </div>
+            </div>
+
+            {/* Desync status if applicable */}
+            {ranking.isDesynced && (
+              <div className="bg-orange-500/10 border border-orange-500/20 rounded-xl p-3 space-y-1">
+                <p className="text-xs font-semibold text-orange-400">Desynced</p>
+                <p className="text-[10px] text-white/40">
+                  Complete {ranking.desyncAssistsNeeded - ranking.desyncAssistsCompleted} more assist{ranking.desyncAssistsNeeded - ranking.desyncAssistsCompleted !== 1 ? "s" : ""} to resync.
+                </p>
+                <div className="h-1 bg-white/10 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-orange-500 rounded-full"
+                    style={{ width: `${(ranking.desyncAssistsCompleted / ranking.desyncAssistsNeeded) * 100}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            <button
+              onClick={() => setShowProfile(false)}
+              className="w-full py-3 rounded-xl border border-akyra-border text-akyra-secondary"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showExtension && (
+        <ShiftExtensionModal
+          associateId={associate.id}
+          storeId={associate.store_id}
+          minutesOverdue={minutesOverdue}
+          onExtended={() => setShowExtension(false)}
+          onLeaving={() => {
+            setShowExtension(false)
+            if (onLeaving) onLeaving()
+          }}
+          onLeft={() => {
+            navigate("/app/login")
+          }}
+        />
+      )}
+
+      {showEarlyDeparture && (
+        <EarlyDepartureModal
+          associateId={associate.id}
+          storeId={associate.store_id}
+          onDeparted={() => navigate("/app/login")}
+          onDismiss={() => setShowEarlyDeparture(false)}
+        />
+      )}
+
+      {showBreakModal && (
+        <TakeBreakModal
+          associateId={associate.id}
+          storeId={associate.store_id}
+          roleRank={associate.role_rank ?? 1}
+          onBreakStarted={(breakStartedAt) => {
+            setShowBreakModal(false)
+            setBreakStatus({
+              onBreak: true,
+              breakTaken: false,
+              secondsRemaining: 30 * 60,
+              breakStartedAt,
+            })
+          }}
+          onDismiss={() => setShowBreakModal(false)}
+        />
+      )}
+
+      {showPartialModal && (
+        <PartialCompletionModal
+          taskId={showPartialModal.taskId}
+          taskName={showPartialModal.taskName}
+          associateName={associate.name}
+          onSaved={() => {
+            setShowPartialModal(null)
+            refetch()
+          }}
+          onDismiss={() => setShowPartialModal(null)}
         />
       )}
     </div>

@@ -164,6 +164,15 @@ export type Database = {
           is_active: boolean
           station: string
           store_id: string
+          shift_bucket: string | null
+          scheduled_end_time: string | null
+          is_extended: boolean
+          extension_reason: string | null
+          original_end_time: string | null
+          on_break: boolean
+          break_started_at: string | null
+          break_ended_at: string | null
+          break_taken: boolean
         }
         Insert: {
           associate_id: string
@@ -173,6 +182,15 @@ export type Database = {
           is_active?: boolean
           station: string
           store_id: string
+          shift_bucket?: string | null
+          scheduled_end_time?: string | null
+          is_extended?: boolean
+          extension_reason?: string | null
+          original_end_time?: string | null
+          on_break?: boolean
+          break_started_at?: string | null
+          break_ended_at?: string | null
+          break_taken?: boolean
         }
         Update: {
           associate_id?: string
@@ -182,6 +200,15 @@ export type Database = {
           is_active?: boolean
           station?: string
           store_id?: string
+          shift_bucket?: string | null
+          scheduled_end_time?: string | null
+          is_extended?: boolean
+          extension_reason?: string | null
+          original_end_time?: string | null
+          on_break?: boolean
+          break_started_at?: string | null
+          break_ended_at?: string | null
+          break_taken?: boolean
         }
         Relationships: []
       }
@@ -406,6 +433,9 @@ export type Database = {
           org_id: string | null
           role: string
           role_rank: number | null
+          placement_complete: boolean
+          placement_completed_at: string | null
+          placement_skipped: boolean
         }
         Insert: {
           auth_uid?: string | null
@@ -420,6 +450,9 @@ export type Database = {
           org_id?: string | null
           role?: string
           role_rank?: number | null
+          placement_complete?: boolean
+          placement_completed_at?: string | null
+          placement_skipped?: boolean
         }
         Update: {
           auth_uid?: string | null
@@ -434,6 +467,9 @@ export type Database = {
           org_id?: string | null
           role?: string
           role_rank?: number | null
+          placement_complete?: boolean
+          placement_completed_at?: string | null
+          placement_skipped?: boolean
         }
         Relationships: [
           {
@@ -461,15 +497,17 @@ export type Database = {
           shift_date: string
           start_time: string
           store_id: string
+          shift_bucket: string | null
         }
         Insert: {
           associate_id: string
           created_at?: string
           end_time: string
           id?: string
-          shift_date?: string
+          shift_date: string
           start_time: string
           store_id: string
+          shift_bucket?: string | null
         }
         Update: {
           associate_id?: string
@@ -479,6 +517,7 @@ export type Database = {
           shift_date?: string
           start_time?: string
           store_id?: string
+          shift_bucket?: string | null
         }
         Relationships: [
           {
@@ -548,6 +587,7 @@ export type Database = {
           org_id: string
           store_number: string
           timezone: string
+          district_id: string | null
         }
         Insert: {
           activated_at?: string | null
@@ -558,6 +598,7 @@ export type Database = {
           org_id: string
           store_number: string
           timezone?: string
+          district_id?: string | null
         }
         Update: {
           activated_at?: string | null
@@ -568,6 +609,7 @@ export type Database = {
           org_id?: string
           store_number?: string
           timezone?: string
+          district_id?: string | null
         }
         Relationships: [
           {
@@ -699,6 +741,18 @@ export type Database = {
           store_id: string
           task_description: string | null
           task_name: string
+          lifecycle_state: string
+          neglect_count: number
+          last_neglected_at: string | null
+          is_cross_shift_critical: boolean
+          progress_pct: number | null
+          progress_notes: string | null
+          last_progress_by: string | null
+          last_progress_at: string | null
+          inherited_from_bucket: string | null
+          inherited_from_associate: string | null
+          inherited_at: string | null
+          shift_bucket: string | null
         }
         Insert: {
           archetype: string
@@ -724,6 +778,18 @@ export type Database = {
           store_id: string
           task_description?: string | null
           task_name: string
+          lifecycle_state?: string
+          neglect_count?: number
+          last_neglected_at?: string | null
+          is_cross_shift_critical?: boolean
+          progress_pct?: number | null
+          progress_notes?: string | null
+          last_progress_by?: string | null
+          last_progress_at?: string | null
+          inherited_from_bucket?: string | null
+          inherited_from_associate?: string | null
+          inherited_at?: string | null
+          shift_bucket?: string | null
         }
         Update: {
           archetype?: string
@@ -749,6 +815,18 @@ export type Database = {
           store_id?: string
           task_description?: string | null
           task_name?: string
+          lifecycle_state?: string
+          neglect_count?: number
+          last_neglected_at?: string | null
+          is_cross_shift_critical?: boolean
+          progress_pct?: number | null
+          progress_notes?: string | null
+          last_progress_by?: string | null
+          last_progress_at?: string | null
+          inherited_from_bucket?: string | null
+          inherited_from_associate?: string | null
+          inherited_at?: string | null
+          shift_bucket?: string | null
         }
         Relationships: [
           {
@@ -957,6 +1035,433 @@ export type Database = {
           completion_pct?: number | null
           benchmark?: string
           is_kill_leader?: boolean
+          created_at?: string
+        }
+        Relationships: []
+      }
+      task_lockout_windows: {
+        Row: {
+          id: string
+          store_id: string
+          shift_bucket: string
+          lockout_start: string
+          lockout_end: string
+          is_active: boolean
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          store_id: string
+          shift_bucket: string
+          lockout_start: string
+          lockout_end: string
+          is_active?: boolean
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          store_id?: string
+          shift_bucket?: string
+          lockout_start?: string
+          lockout_end?: string
+          is_active?: boolean
+          created_by?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
+      task_incidents: {
+        Row: {
+          id: string
+          store_id: string
+          task_id: string
+          task_name: string
+          shift_bucket: string
+          neglect_count: number
+          first_neglected_at: string
+          resolved_by: string | null
+          resolved_at: string | null
+          resolution_notes: string | null
+          is_resolved: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          store_id: string
+          task_id: string
+          task_name: string
+          shift_bucket: string
+          neglect_count: number
+          first_neglected_at: string
+          resolved_by?: string | null
+          resolved_at?: string | null
+          resolution_notes?: string | null
+          is_resolved?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          store_id?: string
+          task_id?: string
+          task_name?: string
+          shift_bucket?: string
+          neglect_count?: number
+          first_neglected_at?: string
+          resolved_by?: string | null
+          resolved_at?: string | null
+          resolution_notes?: string | null
+          is_resolved?: boolean
+          created_at?: string
+        }
+        Relationships: []
+      }
+      challenge_patterns: {
+        Row: {
+          id: string
+          store_id: string
+          org_id: string
+          district_id: string | null
+          task_id: string | null
+          task_name: string
+          associate_id: string | null
+          associate_name: string
+          supervisor_id: string | null
+          supervisor_name: string | null
+          pattern_type: string
+          challenge_count: number
+          window_start: string
+          window_end: string
+          flag_level: string
+          is_resolved: boolean
+          resolved_by: string | null
+          resolved_at: string | null
+          resolution_notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          store_id: string
+          org_id: string
+          district_id?: string | null
+          task_id?: string | null
+          task_name: string
+          associate_id?: string | null
+          associate_name: string
+          supervisor_id?: string | null
+          supervisor_name?: string | null
+          pattern_type: string
+          challenge_count?: number
+          window_start?: string
+          flag_level?: string
+          is_resolved?: boolean
+          resolved_by?: string | null
+          resolved_at?: string | null
+          resolution_notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          store_id?: string
+          org_id?: string
+          district_id?: string | null
+          task_id?: string | null
+          task_name?: string
+          associate_id?: string | null
+          associate_name?: string
+          supervisor_id?: string | null
+          supervisor_name?: string | null
+          pattern_type?: string
+          challenge_count?: number
+          window_start?: string
+          flag_level?: string
+          is_resolved?: boolean
+          resolved_by?: string | null
+          resolved_at?: string | null
+          resolution_notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      associate_rankings: {
+        Row: {
+          id: string
+          store_id: string
+          org_id: string
+          district_id: string | null
+          region_id: string | null
+          associate_id: string
+          associate_name: string
+          points_tasks: number
+          points_verified: number
+          points_assists: number
+          points_kill_leader: number
+          points_mvp: number
+          points_vindicated: number
+          points_total: number
+          tier: string
+          tier_changed_at: string | null
+          previous_tier: string | null
+          is_predator: boolean
+          is_succession_candidate: boolean
+          is_desynced: boolean
+          desync_reason: string | null
+          desync_since: string | null
+          desync_cleared_at: string | null
+          desync_assists_needed: number
+          desync_assists_completed: number
+          last_calculated: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          store_id: string
+          org_id: string
+          district_id?: string | null
+          region_id?: string | null
+          associate_id: string
+          associate_name: string
+          points_tasks?: number
+          points_verified?: number
+          points_assists?: number
+          points_kill_leader?: number
+          points_mvp?: number
+          points_vindicated?: number
+          points_total?: number
+          tier?: string
+          tier_changed_at?: string | null
+          previous_tier?: string | null
+          is_predator?: boolean
+          is_succession_candidate?: boolean
+          is_desynced?: boolean
+          desync_reason?: string | null
+          desync_since?: string | null
+          desync_cleared_at?: string | null
+          desync_assists_needed?: number
+          desync_assists_completed?: number
+          last_calculated?: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          store_id?: string
+          org_id?: string
+          district_id?: string | null
+          region_id?: string | null
+          associate_id?: string
+          associate_name?: string
+          points_tasks?: number
+          points_verified?: number
+          points_assists?: number
+          points_kill_leader?: number
+          points_mvp?: number
+          points_vindicated?: number
+          points_total?: number
+          tier?: string
+          tier_changed_at?: string | null
+          previous_tier?: string | null
+          is_predator?: boolean
+          is_succession_candidate?: boolean
+          is_desynced?: boolean
+          desync_reason?: string | null
+          desync_since?: string | null
+          desync_cleared_at?: string | null
+          desync_assists_needed?: number
+          desync_assists_completed?: number
+          last_calculated?: string
+          created_at?: string
+        }
+        Relationships: []
+      }
+      points_log: {
+        Row: {
+          id: string
+          store_id: string
+          associate_id: string
+          points: number
+          reason: string
+          task_id: string | null
+          shift_date: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          store_id: string
+          associate_id: string
+          points: number
+          reason: string
+          task_id?: string | null
+          shift_date?: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          store_id?: string
+          associate_id?: string
+          points?: number
+          reason?: string
+          task_id?: string | null
+          shift_date?: string
+          created_at?: string
+        }
+        Relationships: []
+      }
+      holdover_events: {
+        Row: {
+          id: string
+          store_id: string
+          associate_id: string
+          shift_bucket: string
+          shift_date: string
+          started_at: string
+          resolved_at: string | null
+          relief_associate_id: string | null
+          is_escalated: boolean
+          escalated_at: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          store_id: string
+          associate_id: string
+          shift_bucket: string
+          shift_date?: string
+          started_at?: string
+          resolved_at?: string | null
+          relief_associate_id?: string | null
+          is_escalated?: boolean
+          escalated_at?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          store_id?: string
+          associate_id?: string
+          shift_bucket?: string
+          shift_date?: string
+          started_at?: string
+          resolved_at?: string | null
+          relief_associate_id?: string | null
+          is_escalated?: boolean
+          escalated_at?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
+      districts: {
+        Row: {
+          id: string
+          name: string
+          org_id: string
+          region_id: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          org_id: string
+          region_id?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          org_id?: string
+          region_id?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
+      regions: {
+        Row: {
+          id: string
+          name: string
+          org_id: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          org_id: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          org_id?: string
+          created_at?: string
+        }
+        Relationships: []
+      }
+      assists: {
+        Row: {
+          id: string
+          store_id: string
+          original_associate_id: string
+          assist_associate_id: string
+          task_id: string
+          ping_id: string
+          shift_date: string
+          shift_bucket: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          store_id: string
+          original_associate_id: string
+          assist_associate_id: string
+          task_id: string
+          ping_id: string
+          shift_date: string
+          shift_bucket: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          store_id?: string
+          original_associate_id?: string
+          assist_associate_id?: string
+          task_id?: string
+          ping_id?: string
+          shift_date?: string
+          shift_bucket?: string
+          created_at?: string
+        }
+        Relationships: []
+      }
+      pings: {
+        Row: {
+          id: string
+          store_id: string
+          from_associate_id: string
+          to_associate_id: string
+          message: string
+          ping_type: string
+          is_read: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          store_id: string
+          from_associate_id: string
+          to_associate_id: string
+          message: string
+          ping_type: string
+          is_read?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          store_id?: string
+          from_associate_id?: string
+          to_associate_id?: string
+          message?: string
+          ping_type?: string
+          is_read?: boolean
           created_at?: string
         }
         Relationships: []

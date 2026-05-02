@@ -9,7 +9,7 @@ const PRIORITIES = ["Normal", "High", "Critical"]
 
 interface CreateTaskFABProps {
   isCreating: boolean
-  onCreateTask: (taskName: string, archetype: string, priority: string) => Promise<Task | null>
+  onCreateTask: (taskName: string, archetype: string, priority: string, isCrossShiftCritical?: boolean) => Promise<Task | null>
 }
 
 export function CreateTaskFAB({ isCreating, onCreateTask }: CreateTaskFABProps) {
@@ -17,15 +17,17 @@ export function CreateTaskFAB({ isCreating, onCreateTask }: CreateTaskFABProps) 
   const [taskName, setTaskName] = useState("")
   const [archetype, setArchetype] = useState("Kitchen")
   const [priority, setPriority] = useState("Normal")
+  const [isCrossShiftCritical, setIsCrossShiftCritical] = useState(false)
 
   async function handleSubmit() {
     const name = taskName.trim()
     if (!name) return
-    const result = await onCreateTask(name, archetype, priority)
+    const result = await onCreateTask(name, archetype, priority, isCrossShiftCritical)
     if (result) {
       setTaskName("")
       setArchetype("Kitchen")
       setPriority("Normal")
+      setIsCrossShiftCritical(false)
       setIsOpen(false)
     }
   }
@@ -101,6 +103,25 @@ export function CreateTaskFAB({ isCreating, onCreateTask }: CreateTaskFABProps) 
                   </button>
                 ))}
               </div>
+            </div>
+
+            <div className="flex items-center justify-between py-2 border-t border-akyra-border/50">
+              <div>
+                <p className="text-sm text-white">Cross-shift critical</p>
+                <p className="text-[10px] text-white/30 font-mono">
+                  Inherits to next shift if not completed
+                </p>
+              </div>
+              <button
+                onClick={() => setIsCrossShiftCritical(!isCrossShiftCritical)}
+                className={`w-10 h-6 rounded-full transition-colors relative ${
+                  isCrossShiftCritical ? "bg-[#E63946]" : "bg-white/10"
+                }`}
+              >
+                <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-transform ${
+                  isCrossShiftCritical ? "left-5" : "left-1"
+                }`} />
+              </button>
             </div>
 
             <button

@@ -66,11 +66,12 @@ export function useSupervisorTasks(storeId: string | null | undefined, modName: 
   async function createTask(
     taskName: string,
     archetype: string,
-    priority: string
+    priority: string,
+    isCrossShiftCritical: boolean = false
   ): Promise<Task | null> {
     if (!storeId) return null
     setIsCreating(true)
-    const newTask = await createJitTask(storeId, taskName, archetype, priority)
+    const newTask = await createJitTask(storeId, taskName, archetype, priority, isCrossShiftCritical)
     if (newTask) {
       setAllTasks(prev => [newTask, ...prev])
     }

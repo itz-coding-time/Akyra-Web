@@ -1,10 +1,14 @@
 import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
+import { supabase } from "../../lib/supabase"
 import { useStation, useShiftLifecycle } from "../../hooks"
 import { useAuth } from "../../context"
-import { fetchActiveShiftsForStore, fetchShiftResultsForStore } from "../../lib"
+import { fetchActiveShiftsForStore, fetchShiftResultsForStore, fetchAssociateScheduleToday } from "../../lib"
 import { DropSequence, ExtractionWarning, EndOfShiftResults } from "../../components/gamification"
+import { LobbyScreen } from "./LobbyScreen"
+import { LoadingSpinner } from "../../components/LoadingSpinner"
 import { AssociateTaskView } from "./AssociateTaskView"
+import { PlacementMatchScreen } from "./PlacementMatchScreen"
 import type { FloatMode } from "../../hooks"
 import type { Associate } from "../../types"
 import type { TeamShiftResult } from "../../lib/repository"
@@ -58,6 +62,67 @@ export function AssociateDashboard({ associate }: AssociateDashboardProps) {
   const currentStation = orgStations.find(s => s.name === station)
   const isFloatStation = currentStation?.isFloat ?? false
 
+  const [schedule, setSchedule] = useState<{ startTime: string; endTime: string } | null>(null)
+  const [scheduleChecked, setScheduleChecked] = useState(false)
+  const [showLobby, setShowLobby] = useState(false)
+  const [readyUp, setReadyUp] = useState(false)
+  const [placementNeeded, setPlacementNeeded] = useState<boolean | null>(null)
+  const [supervisorOnFloor, setSupervisorOnFloor] = useState(false)
+
+  useEffect(() => {
+    async function checkPlacement() {
+      if (!associate.profile_id) {
+        setPlacementNeeded(false)
+        return
+      }
+
+      // Only crew (T1) see placement match
+      if (associate.role_rank !== 1) {
+        setPlacementNeeded(false)
+        return
+      }
+
+      const { needsPlacement } = await import("../../lib")
+      const needs = await needsPlacement(associate.profile_id)
+
+      if (needs) {
+        // Check if supervisor is on floor
+        const { data: supervisors } = await supabase
+          .from("active_shifts")
+          .select("associate_id, associates!associate_id(role_rank)")
+          .eq("store_id", associate.store_id)
+          .eq("is_active", true)
+          .neq("associate_id", associate.id)
+
+        const hasSup = (supervisors ?? []).some(
+          (s: any) => (s.associates?.role_rank ?? 0) >= 2
+        )
+        setSupervisorOnFloor(hasSup)
+        setPlacementNeeded(true)
+      } else {
+        setPlacementNeeded(false)
+      }
+    }
+    checkPlacement()
+  }, [associate.profile_id, associate.role_rank, associate.store_id, associate.id])
+
+  useEffect(() => {
+    fetchAssociateScheduleToday(associate.id, associate.store_id).then(s => {
+      setSchedule(s)
+
+      if (s) {
+        const now = Date.now()
+        const start = new Date(s.startTime).getTime()
+        // Show Lobby if more than 2 minutes before shift start
+        if (start - now > 120000) {
+          setShowLobby(true)
+        }
+      }
+
+      setScheduleChecked(true)
+    })
+  }, [associate.id, associate.store_id])
+
   // Squad members for drop sequence (fetch before station is claimed)
   const [squadMembers, setSquadMembers] = useState<Array<{ name: string; station: string; emoji: string }>>([])
   useEffect(() => {
@@ -100,6 +165,45 @@ export function AssociateDashboard({ associate }: AssociateDashboardProps) {
   async function handleResultsDone() {
     await signOut()
     navigate("/app/login")
+  }
+
+  // If not checked yet, show loading
+  if (!scheduleChecked || placementNeeded === null) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <LoadingSpinner />
+      </div>
+    )
+  }
+
+  // Show placement match if needed
+  if (placementNeeded && associate.profile_id) {
+    return (
+      <PlacementMatchScreen
+        associateId={associate.id}
+        associateName={associate.name}
+        storeId={associate.store_id}
+        profileId={associate.profile_id}
+        isOnShift={supervisorOnFloor}
+        onComplete={() => setPlacementNeeded(false)}
+      />
+    )
+  }
+
+  // Show Lobby if applicable
+  if (scheduleChecked && showLobby && !readyUp && schedule) {
+    return (
+      <LobbyScreen
+        associateId={associate.id}
+        storeId={associate.store_id}
+        storeName={"Your Store"}
+        scheduledStart={schedule.startTime}
+        onReadyUp={() => {
+          setShowLobby(false)
+          setReadyUp(true)
+        }}
+      />
+    )
   }
 
   // No station — show drop sequence (replaces StationClaimScreen)

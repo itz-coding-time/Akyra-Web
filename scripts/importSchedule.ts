@@ -144,6 +144,39 @@ async function getAssociateIdByName(name: string): Promise<string | null> {
   return data?.id ?? null
 }
 
+// Determine shift bucket based on majority hours
+function assignShiftBucket(
+  startTime: string,
+  endTime: string
+): "6a-2p" | "2p-10p" | "10p-6a" {
+  const [sh, sm] = startTime.split(":").map(Number)
+  const [eh, em] = endTime.split(":").map(Number)
+
+  // Calculate majority hours in each bucket
+  const buckets = {
+    "6a-2p": 0,
+    "2p-10p": 0,
+    "10p-6a": 0,
+  }
+
+  // Walk through each hour of the shift and tally which bucket it falls in
+  let startMins = sh * 60 + sm
+  let endMins = eh * 60 + em
+  if (endMins <= startMins) endMins += 24 * 60
+
+  for (let currentMins = startMins; currentMins < endMins; currentMins += 60) {
+    const h = (Math.floor(currentMins / 60)) % 24
+    if (h >= 6 && h < 14) buckets["6a-2p"]++
+    else if (h >= 14 && h < 22) buckets["2p-10p"]++
+    else buckets["10p-6a"]++
+  }
+
+  // Return the bucket with most hours
+  return Object.entries(buckets).sort(
+    ([, a], [, b]) => b - a
+  )[0][0] as "6a-2p" | "2p-10p" | "10p-6a"
+}
+
 async function main() {
   const csvPath = process.argv[2]
   if (!csvPath) {
@@ -234,6 +267,7 @@ async function main() {
         shift_date: shift.date,
         start_time: shift.startTime,
         end_time: shift.endTime,
+        shift_bucket: assignShiftBucket(shift.startTime, shift.endTime),
       }, {
         onConflict: 'store_id,associate_id,shift_date,start_time',
         ignoreDuplicates: false,
