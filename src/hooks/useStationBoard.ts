@@ -124,7 +124,7 @@ export function useStationBoard(storeId: string | null | undefined) {
       )
     )
 
-    const success = await claimStation(associateId, newArchetype)
+    const success = await claimStation(associateId, storeId!, newArchetype)
     if (!success) {
       await loadAssociates()
     }

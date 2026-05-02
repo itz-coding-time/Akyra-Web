@@ -84,14 +84,14 @@ export function RejectionResponseModal({
             <div className="grid grid-cols-2 gap-2">
               {associatePhotoUrl && (
                 <div>
-                  <p className="text-[10px] font-mono text-akyra-secondary mb-1">Your photo</p>
-                  <img src={associatePhotoUrl} alt="Associate" className="w-full rounded-lg border border-akyra-border" />
+                  <p className="text-[10px] font-mono text-akyra-secondary mb-1">After</p>
+                  <img src={associatePhotoUrl} alt="After" className="w-full rounded-lg border border-akyra-border" />
                 </div>
               )}
               {supervisorPhotoUrl && (
                 <div>
-                  <p className="text-[10px] font-mono text-akyra-secondary mb-1">Supervisor photo</p>
-                  <img src={supervisorPhotoUrl} alt="Supervisor" className="w-full rounded-lg border border-akyra-border" />
+                  <p className="text-[10px] font-mono text-akyra-secondary mb-1">Before</p>
+                  <img src={supervisorPhotoUrl} alt="Before" className="w-full rounded-lg border border-akyra-border" />
                 </div>
               )}
             </div>

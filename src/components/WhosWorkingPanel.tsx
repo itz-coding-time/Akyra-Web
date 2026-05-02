@@ -23,6 +23,7 @@ export function WhosWorkingPanel({ storeId, myAssociateId }: WhosWorkingPanelPro
     associateName: string
     station: string
     currentTask: string | null
+    isExtended: boolean
   }>>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isOpen, setIsOpen] = useState(false)
@@ -77,11 +78,18 @@ export function WhosWorkingPanel({ storeId, myAssociateId }: WhosWorkingPanelPro
                         </p>
                       </div>
                     </div>
-                    {person.currentTask && (
-                      <p className="text-xs text-akyra-secondary text-right max-w-[120px] truncate">
-                        {person.currentTask}
-                      </p>
-                    )}
+                    <div className="text-right">
+                      {person.currentTask && (
+                        <p className="text-xs text-akyra-secondary max-w-[120px] truncate">
+                          {person.currentTask}
+                        </p>
+                      )}
+                      {person.isExtended && (
+                        <span className="inline-block mt-1 text-[9px] font-mono text-orange-400/60 border border-orange-500/20 rounded px-1.5 py-0.5">
+                          extending
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}

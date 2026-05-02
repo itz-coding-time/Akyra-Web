@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react"
 import {
   claimStation,
-  createActiveShift,
   updateActiveShiftStation,
   expireActiveShift,
 } from "../lib"
@@ -70,13 +69,10 @@ export function useStation(associate: Associate | null) {
     if (!associate) return false
     setIsClaiming(true)
 
-    // Create active shift row (Ghost Protocol)
-    const activeShift = await createActiveShift(associate.id, associate.store_id, archetype)
+    // Update current_archetype and manage active_shifts (Ghost Protocol)
+    const success = await claimStation(associate.id, associate.store_id, archetype)
 
-    // Also update current_archetype on associate row
-    const success = await claimStation(associate.id, archetype)
-
-    if (success && activeShift) {
+    if (success) {
       setStation(archetype)
       sessionStorage.setItem(SESSION_STATION_KEY, archetype)
       if (archetype !== "Float") {
@@ -86,7 +82,7 @@ export function useStation(associate: Associate | null) {
     }
 
     setIsClaiming(false)
-    return success && !!activeShift
+    return success
   }
 
   async function setFloat(mode: FloatMode, associateId?: string) {
