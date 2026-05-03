@@ -34,9 +34,15 @@ export async function consumeOAuthRedirectSession(): Promise<boolean> {
   const code = url.searchParams.get("code")
 
   if (code) {
-    const { error } = await supabase.auth.exchangeCodeForSession(code)
-    clearOAuthParams()
-    return !error
+    try {
+      const { error } = await supabase.auth.exchangeCodeForSession(code)
+      clearOAuthParams()
+      return !error
+    } catch (err) {
+      console.error("[Supabase] Failed to exchange code for session:", err)
+      clearOAuthParams()
+      return false
+    }
   }
 
   const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""))
@@ -44,12 +50,18 @@ export async function consumeOAuthRedirectSession(): Promise<boolean> {
   const refreshToken = hashParams.get("refresh_token")
 
   if (accessToken && refreshToken) {
-    const { error } = await supabase.auth.setSession({
-      access_token: accessToken,
-      refresh_token: refreshToken,
-    })
-    clearOAuthParams()
-    return !error
+    try {
+      const { error } = await supabase.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+      })
+      clearOAuthParams()
+      return !error
+    } catch (err) {
+      console.error("[Supabase] Failed to set session from hash:", err)
+      clearOAuthParams()
+      return false
+    }
   }
 
   return false
