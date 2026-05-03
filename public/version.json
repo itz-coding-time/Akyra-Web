@@ -1,5 +1,5 @@
 {
-  "version": "1.1.1",
+  "version": "1.1.2",
   "released": "2026-05-03",
-  "notes": "Logging enabled."
+  "notes": "Fixed AuthContext lock contention causing endless loading in DbAdminPanel and overall app."
 }
