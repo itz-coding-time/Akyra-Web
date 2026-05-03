@@ -1,0 +1,701 @@
+# Akyra Web — OPS5: Break System
+
+Do only what is described. Nothing else.
+
+**Context:** Every associate is entitled to one 30-minute break per shift. T2+ associates (Supervisor, ASM, Store Manager) can only take a break if another T2+ is present and active on the floor — you cannot leave the store without supervision. During a break, assigned tasks pause (not orphaned, not reassigned). The station board shows "On Break" with a countdown. At break end, the associate receives a ping to return.
+
+**Break rules:**
+- One break per shift — `break_taken` prevents double-dipping
+- T1 crew: always allowed if not already taken
+- T2/T3/T4: only allowed if another T2+ is active, not on break, at the same store
+- Tasks pause during break — not orphaned, completion rate unaffected
+- Station board shows "On Break" + countdown
+- Auto-ping at break end: "Break time's up. Get back out there."
+- Associate taps "I'm back" to resume
+
+**Prerequisites:** OPS1-4 complete. All RBAC prompts complete. `active_shifts` table exists.
+
+---
+
+## SQL — Run before starting
+
+```sql
+ALTER TABLE active_shifts
+  ADD COLUMN IF NOT EXISTS on_break BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS break_started_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS break_ended_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS break_taken BOOLEAN NOT NULL DEFAULT false;
+
+CREATE INDEX IF NOT EXISTS active_shifts_break_idx
+  ON active_shifts(store_id, on_break)
+  WHERE on_break = true;
+
+-- Verify
+SELECT column_name FROM information_schema.columns
+WHERE table_name = 'active_shifts'
+AND column_name IN ('on_break', 'break_started_at', 'break_ended_at', 'break_taken');
+```
+
+---
+
+## Before touching anything:
+
+1. Read `src/pages/associate/AssociateTaskView.tsx` in full
+2. Read `src/pages/dashboard/OverviewPage.tsx` — find station board rendering
+3. Read `src/lib/repository.ts` — find active_shifts methods
+4. Read `src/components/gamification/RadialMenu.tsx` — find action directions
+
+---
+
+## Change 1 of 6 — Add break repository methods
+
+Add to `src/lib/repository.ts`:
+
+```typescript
+// ── Break System ──────────────────────────────────────────────────────────
+
+const BREAK_DURATION_MINUTES = 30
+
+/**
+ * Check if an associate can take their break right now.
+ * T2+ requires another T2+ to be present and not on break.
+ */
+export async function canTakeBreak(
+  associateId: string,
+  storeId: string,
+  roleRank: number
+): Promise<{
+  allowed: boolean
+  coveringName?: string
+  reason?: string
+}> {
+  // Check current shift status
+  const { data: shift } = await supabase
+    .from("active_shifts")
+    .select("break_taken, on_break")
+    .eq("associate_id", associateId)
+    .eq("store_id", storeId)
+    .eq("is_active", true)
+    .maybeSingle()
+
+  if (!shift) {
+    return { allowed: false, reason: "No active shift found." }
+  }
+
+  if (shift.break_taken) {
+    return { allowed: false, reason: "You've already taken your break this shift." }
+  }
+
+  if (shift.on_break) {
+    return { allowed: false, reason: "You're already on break." }
+  }
+
+  // T2+ constraint — need another supervisor on floor
+  if (roleRank >= 2) {
+    const { data: otherActive } = await supabase
+      .from("active_shifts")
+      .select(`
+        associate_id,
+        on_break,
+        associates!associate_id(name, role_rank)
+      `)
+      .eq("store_id", storeId)
+      .eq("is_active", true)
+      .neq("associate_id", associateId)
+
+    const coveringSup = (otherActive ?? []).find(s => {
+      const rank = (s as any).associates?.role_rank ?? 0
+      return rank >= 2 && !s.on_break
+    })
+
+    if (!coveringSup) {
+      return {
+        allowed: false,
+        reason: "No other supervisor on floor. You can't take a break until relief arrives.",
+      }
+    }
+
+    return {
+      allowed: true,
+      coveringName: (coveringSup as any).associates?.name ?? "your cover",
+    }
+  }
+
+  return { allowed: true }
+}
+
+/**
+ * Start a break for an associate.
+ */
+export async function startBreak(
+  associateId: string,
+  storeId: string
+): Promise<boolean> {
+  const { error } = await supabase
+    .from("active_shifts")
+    .update({
+      on_break: true,
+      break_started_at: new Date().toISOString(),
+    })
+    .eq("associate_id", associateId)
+    .eq("store_id", storeId)
+    .eq("is_active", true)
+
+  return !error
+}
+
+/**
+ * End a break for an associate.
+ * Marks break_taken so they can't take another.
+ */
+export async function endBreak(
+  associateId: string,
+  storeId: string
+): Promise<boolean> {
+  const { error } = await supabase
+    .from("active_shifts")
+    .update({
+      on_break: false,
+      break_ended_at: new Date().toISOString(),
+      break_taken: true,
+    })
+    .eq("associate_id", associateId)
+    .eq("store_id", storeId)
+    .eq("is_active", true)
+
+  return !error
+}
+
+/**
+ * Get break status for an associate.
+ * Returns seconds remaining on break, or 0 if not on break.
+ */
+export async function getBreakStatus(
+  associateId: string,
+  storeId: string
+): Promise<{
+  onBreak: boolean
+  breakTaken: boolean
+  secondsRemaining: number
+  breakStartedAt: string | null
+}> {
+  const { data } = await supabase
+    .from("active_shifts")
+    .select("on_break, break_taken, break_started_at")
+    .eq("associate_id", associateId)
+    .eq("store_id", storeId)
+    .eq("is_active", true)
+    .maybeSingle()
+
+  if (!data) return { onBreak: false, breakTaken: false, secondsRemaining: 0, breakStartedAt: null }
+
+  let secondsRemaining = 0
+  if (data.on_break && data.break_started_at) {
+    const elapsed = Math.floor((Date.now() - new Date(data.break_started_at).getTime()) / 1000)
+    secondsRemaining = Math.max(0, BREAK_DURATION_MINUTES * 60 - elapsed)
+  }
+
+  return {
+    onBreak: data.on_break ?? false,
+    breakTaken: data.break_taken ?? false,
+    secondsRemaining,
+    breakStartedAt: data.break_started_at,
+  }
+}
+
+/**
+ * Send break-end ping to associate.
+ * Called when break timer hits 0.
+ */
+export async function sendBreakEndPing(
+  associateId: string,
+  storeId: string
+): Promise<void> {
+  await supabase.from("pings").insert({
+    store_id: storeId,
+    from_associate_id: associateId,
+    to_associate_id: associateId,
+    message: "Break time's up. Get back out there. 💪",
+    ping_type: "direct",
+  })
+
+  // Auto-end the break
+  await endBreak(associateId, storeId)
+}
+```
+
+---
+
+## Change 2 of 6 — Create BreakScreen component
+
+Create `src/components/BreakScreen.tsx`:
+
+```tsx
+import { useEffect, useState, useRef } from "react"
+import { sendBreakEndPing, endBreak } from "../lib"
+
+interface BreakScreenProps {
+  associateId: string
+  storeId: string
+  breakStartedAt: string
+  onBreakEnd: () => void
+}
+
+const BREAK_SECONDS = 30 * 60
+
+export function BreakScreen({
+  associateId,
+  storeId,
+  breakStartedAt,
+  onBreakEnd,
+}: BreakScreenProps) {
+  const [secondsLeft, setSecondsLeft] = useState(BREAK_SECONDS)
+  const [breakOver, setBreakOver] = useState(false)
+  const [isReturning, setIsReturning] = useState(false)
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  useEffect(() => {
+    function calcRemaining() {
+      const elapsed = Math.floor(
+        (Date.now() - new Date(breakStartedAt).getTime()) / 1000
+      )
+      return Math.max(0, BREAK_SECONDS - elapsed)
+    }
+
+    setSecondsLeft(calcRemaining())
+
+    timerRef.current = setInterval(() => {
+      const remaining = calcRemaining()
+      setSecondsLeft(remaining)
+
+      if (remaining === 0) {
+        clearInterval(timerRef.current!)
+        setBreakOver(true)
+        sendBreakEndPing(associateId, storeId)
+      }
+    }, 1000)
+
+    return () => { if (timerRef.current) clearInterval(timerRef.current) }
+  }, [breakStartedAt, associateId, storeId])
+
+  async function handleImBack() {
+    setIsReturning(true)
+    await endBreak(associateId, storeId)
+    setIsReturning(false)
+    onBreakEnd()
+  }
+
+  const minutes = Math.floor(secondsLeft / 60)
+  const seconds = secondsLeft % 60
+  const pct = (secondsLeft / BREAK_SECONDS) * 100
+  const isLow = secondsLeft < 5 * 60 // last 5 minutes
+
+  return (
+    <div className="min-h-screen bg-black flex flex-col items-center justify-center px-6">
+      <div className="fixed inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute top-0 left-0 w-[50%] h-[50%] bg-white/[0.01] blur-[150px] rounded-full" />
+      </div>
+
+      <div className="relative z-10 w-full max-w-sm space-y-10 text-center">
+
+        {!breakOver ? (
+          <>
+            <div className="space-y-1">
+              <p className="text-[10px] font-mono uppercase tracking-[0.4em] text-white/20">
+                On Break
+              </p>
+              <p className="text-white/40 text-sm">
+                Rest up. Your tasks are waiting.
+              </p>
+            </div>
+
+            {/* Circular countdown */}
+            <div className="relative w-48 h-48 mx-auto">
+              <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
+                {/* Background circle */}
+                <circle
+                  cx="50" cy="50" r="44"
+                  fill="none"
+                  stroke="rgba(255,255,255,0.05)"
+                  strokeWidth="4"
+                />
+                {/* Progress circle */}
+                <circle
+                  cx="50" cy="50" r="44"
+                  fill="none"
+                  stroke={isLow ? "#E63946" : "rgba(255,255,255,0.3)"}
+                  strokeWidth="4"
+                  strokeLinecap="round"
+                  strokeDasharray={`${2 * Math.PI * 44}`}
+                  strokeDashoffset={`${2 * Math.PI * 44 * (1 - pct / 100)}`}
+                  style={{ transition: "stroke-dashoffset 1s linear, stroke 0.5s ease" }}
+                />
+              </svg>
+
+              {/* Time display */}
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <p className={`text-4xl font-black font-mono ${isLow ? "text-[#E63946]" : "text-white"}`}>
+                  {minutes.toString().padStart(2, "0")}:{seconds.toString().padStart(2, "0")}
+                </p>
+                <p className="text-[10px] font-mono text-white/20 mt-1">remaining</p>
+              </div>
+            </div>
+
+            {isLow && (
+              <p className="text-[#E63946]/60 text-sm font-mono animate-pulse">
+                Wrapping up soon
+              </p>
+            )}
+
+            {/* Early return */}
+            <button
+              onClick={handleImBack}
+              disabled={isReturning}
+              className="w-full py-4 rounded-2xl border border-white/20 text-white font-bold text-lg hover:bg-white/5 transition-colors active:scale-[0.98]"
+            >
+              {isReturning ? "Clocking back in..." : "I'm back →"}
+            </button>
+
+            <p className="text-[9px] font-mono text-white/15">
+              Your break ends automatically in {minutes}:{seconds.toString().padStart(2, "0")}
+            </p>
+          </>
+        ) : (
+          <>
+            <div className="space-y-2">
+              <p className="text-[10px] font-mono uppercase tracking-[0.4em] text-white/20">
+                Break Over
+              </p>
+              <p className="text-2xl font-black text-white">
+                Get back out there. 💪
+              </p>
+              <p className="text-sm text-white/40">
+                Your squad needs you.
+              </p>
+            </div>
+
+            <button
+              onClick={handleImBack}
+              disabled={isReturning}
+              className="w-full py-4 rounded-2xl bg-white text-black font-black text-lg active:scale-[0.98]"
+            >
+              {isReturning ? "Clocking back in..." : "Back on the floor →"}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+```
+
+Export from `src/components/index.ts`:
+
+```typescript
+export { BreakScreen } from "./BreakScreen"
+```
+
+---
+
+## Change 3 of 6 — Create TakeBreakModal
+
+Create `src/components/TakeBreakModal.tsx`:
+
+```tsx
+import { useState } from "react"
+import { canTakeBreak, startBreak } from "../lib"
+import { LoadingSpinner } from "./LoadingSpinner"
+import { Coffee, X } from "lucide-react"
+
+interface TakeBreakModalProps {
+  associateId: string
+  storeId: string
+  roleRank: number
+  onBreakStarted: (breakStartedAt: string) => void
+  onDismiss: () => void
+}
+
+export function TakeBreakModal({
+  associateId,
+  storeId,
+  roleRank,
+  onBreakStarted,
+  onDismiss,
+}: TakeBreakModalProps) {
+  const [isChecking, setIsChecking] = useState(false)
+  const [isStarting, setIsStarting] = useState(false)
+  const [checkResult, setCheckResult] = useState<{
+    allowed: boolean
+    coveringName?: string
+    reason?: string
+  } | null>(null)
+
+  async function handleCheck() {
+    setIsChecking(true)
+    const result = await canTakeBreak(associateId, storeId, roleRank)
+    setCheckResult(result)
+    setIsChecking(false)
+  }
+
+  async function handleStartBreak() {
+    setIsStarting(true)
+    const success = await startBreak(associateId, storeId)
+    if (success) {
+      onBreakStarted(new Date().toISOString())
+    }
+    setIsStarting(false)
+  }
+
+  // Auto-check on mount
+  useState(() => {
+    handleCheck()
+  })
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center">
+      <div className="absolute inset-0 bg-black/70" onClick={onDismiss} />
+      <div className="relative w-full max-w-lg bg-akyra-surface border-t border-akyra-border rounded-t-2xl p-6 space-y-5">
+
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Coffee className="w-5 h-5 text-akyra-secondary" />
+            <p className="font-bold text-white">Take a Break</p>
+          </div>
+          <button onClick={onDismiss} className="text-akyra-secondary hover:text-white">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {isChecking ? (
+          <div className="flex items-center justify-center py-6">
+            <LoadingSpinner size="md" />
+          </div>
+        ) : checkResult ? (
+          <>
+            {checkResult.allowed ? (
+              <div className="space-y-4">
+                <div className="bg-white/[0.03] border border-white/10 rounded-xl p-4 space-y-1">
+                  <p className="text-sm text-white">30-minute break</p>
+                  <p className="text-xs text-akyra-secondary">
+                    Your tasks will be paused and waiting when you return.
+                  </p>
+                  {checkResult.coveringName && (
+                    <p className="text-xs text-white/40 font-mono mt-2">
+                      {checkResult.coveringName} is covering the floor.
+                    </p>
+                  )}
+                </div>
+
+                <button
+                  onClick={handleStartBreak}
+                  disabled={isStarting}
+                  className="w-full py-4 rounded-xl bg-white text-black font-bold flex items-center justify-center gap-2"
+                >
+                  {isStarting
+                    ? <><LoadingSpinner size="sm" /> Starting break...</>
+                    : <><Coffee className="w-4 h-4" /> Start Break</>
+                  }
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="bg-[#E63946]/[0.05] border border-[#E63946]/20 rounded-xl p-4">
+                  <p className="text-sm text-white/80">{checkResult.reason}</p>
+                </div>
+
+                <button
+                  onClick={onDismiss}
+                  className="w-full py-3 rounded-xl border border-akyra-border text-akyra-secondary"
+                >
+                  Got it
+                </button>
+              </div>
+            )}
+          </>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+```
+
+Export from `src/components/index.ts`:
+
+```typescript
+export { TakeBreakModal } from "./TakeBreakModal"
+```
+
+---
+
+## Change 4 of 6 — Wire break into AssociateTaskView
+
+In `src/pages/associate/AssociateTaskView.tsx`:
+
+```tsx
+import { BreakScreen } from "../../components/BreakScreen"
+import { TakeBreakModal } from "../../components/TakeBreakModal"
+import { getBreakStatus } from "../../lib"
+
+// Add state:
+const [breakStatus, setBreakStatus] = useState<{
+  onBreak: boolean
+  breakTaken: boolean
+  secondsRemaining: number
+  breakStartedAt: string | null
+} | null>(null)
+const [showBreakModal, setShowBreakModal] = useState(false)
+
+// Load break status on mount and refresh periodically:
+useEffect(() => {
+  async function loadBreakStatus() {
+    const status = await getBreakStatus(associate.id, associate.store_id)
+    setBreakStatus(status)
+  }
+
+  loadBreakStatus()
+  const interval = setInterval(loadBreakStatus, 30000) // refresh every 30s
+  return () => clearInterval(interval)
+}, [associate.id, associate.store_id])
+
+// If on break, show BreakScreen instead of task view:
+if (breakStatus?.onBreak && breakStatus.breakStartedAt) {
+  return (
+    <BreakScreen
+      associateId={associate.id}
+      storeId={associate.store_id}
+      breakStartedAt={breakStatus.breakStartedAt}
+      onBreakEnd={() => {
+        setBreakStatus(prev => prev ? { ...prev, onBreak: false, breakTaken: true } : null)
+      }}
+    />
+  )
+}
+
+// Add "Take Break" button to the overflow menu or bottom of task view:
+// Only show if break not yet taken:
+{!breakStatus?.breakTaken && (
+  <button
+    onClick={() => setShowBreakModal(true)}
+    className="flex items-center gap-2 text-xs font-mono text-akyra-secondary hover:text-white transition-colors"
+  >
+    <Coffee className="w-3.5 h-3.5" />
+    Take Break
+  </button>
+)}
+
+{breakStatus?.breakTaken && (
+  <p className="text-[9px] font-mono text-white/20">Break taken this shift</p>
+)}
+
+// Render TakeBreakModal:
+{showBreakModal && (
+  <TakeBreakModal
+    associateId={associate.id}
+    storeId={associate.store_id}
+    roleRank={associate.role_rank ?? 1}
+    onBreakStarted={(breakStartedAt) => {
+      setShowBreakModal(false)
+      setBreakStatus({
+        onBreak: true,
+        breakTaken: false,
+        secondsRemaining: 30 * 60,
+        breakStartedAt,
+      })
+    }}
+    onDismiss={() => setShowBreakModal(false)}
+  />
+)}
+```
+
+Add import:
+```tsx
+import { Coffee } from "lucide-react"
+```
+
+---
+
+## Change 5 of 6 — Show break status on station board
+
+In `src/pages/dashboard/OverviewPage.tsx`, update the associate card in the station board to show break status:
+
+```tsx
+// In the station board associate card:
+{associate.on_break ? (
+  <div className="flex items-center gap-1.5">
+    <Coffee className="w-3 h-3 text-white/30" />
+    <span className="text-[9px] font-mono text-white/30">
+      On Break
+      {associate.break_started_at && (
+        ` · ${Math.max(0, 30 - Math.floor((Date.now() - new Date(associate.break_started_at).getTime()) / 60000))}m left`
+      )}
+    </span>
+  </div>
+) : (
+  // Normal station display
+  <span className="text-[10px] font-mono text-akyra-secondary">
+    {associate.current_archetype ?? associate.station}
+  </span>
+)}
+```
+
+Update `fetchActiveShiftsForStore` in repository.ts to include break fields:
+
+```typescript
+// Add to the select query:
+.select("associate_id, station, is_active, on_break, break_started_at, ...")
+```
+
+---
+
+## Change 6 of 6 — Exclude on-break tasks from pacing calculation
+
+In `src/lib/repository.ts`, update pacing calculations to exclude associates who are on break:
+
+```typescript
+// In fetchShiftPacing or equivalent pacing function:
+// Filter out associates who are on break when calculating expected completion rate
+// Their tasks don't count against the store's pacing while they're on break
+
+// Add to the pacing query:
+.eq("on_break", false) // only count active (not on break) associates for pacing
+```
+
+---
+
+## Verify
+
+Run:
+
+```bash
+npm run build
+```
+
+**Test T1 break:**
+1. Sign in as crew associate
+2. Task view → "Take Break" button visible
+3. Tap → TakeBreakModal → "30-minute break, your tasks will be paused"
+4. Tap "Start Break" → BreakScreen with circular countdown
+5. Station board shows "☕ On Break · 29m left"
+6. Tap "I'm back" → back to task view
+7. "Take Break" button gone — "Break taken this shift" shown
+
+**Test T2 break — supervisor present:**
+1. Sign in as supervisor with another supervisor active
+2. Tap "Take Break" → "Break approved. [Name] is covering."
+3. Break starts normally
+
+**Test T2 break — no supervisor present:**
+1. Sign in as supervisor with NO other T2+ active
+2. Tap "Take Break" → "No other supervisor on floor. You can't take a break until relief arrives."
+3. Break blocked
+
+**Test auto-end:**
+1. Start a break
+2. Set `break_started_at` to 29 minutes ago in Supabase
+3. Within 60 seconds: break ends, "Break time's up" ping fires
+4. BreakScreen switches to "Get back out there" state
+
+**Test pacing exclusion:**
+- Associate on break: their tasks don't drag down store completion %
+
+Build must pass with zero TypeScript errors before you stop.

@@ -1,0 +1,104 @@
+Akyra Web — DBAD 5-Tier Drill-Down
+
+Do only what is described. Nothing else.
+
+Context: The Database Admin panel (DBAD) currently has a flat or broken hierarchy. It needs to be upgraded to a strict 5-Tier drill-down: Organizations -> Regions -> Districts -> Stores -> Profiles. DBADs must also be able to permanently delete Organizations, and the "Friendly Code" (welcomePhrase) must be clearly visible on the Org cards.
+
+Prerequisites: Database schema has been updated to include region_id on the districts table, and RLS policies allow deletion of organizations.
+
+Change 1 of 2 — Update repository.ts
+
+Modify src/lib/repository.ts to support org deletion and region-based district creation.
+
+Add the deleteOrganization function:
+
+export async function deleteOrganization(orgId: string): Promise<boolean> {
+  const { error } = await supabase.from("organizations").delete().eq("id", orgId)
+  if (error) {
+    console.error("deleteOrganization failed:", error.message)
+    return false
+  }
+  return true
+}
+
+
+Update fetchDistrictsForRegion to filter by region_id:
+
+export async function fetchDistrictsForRegion(regionId: string) {
+  const { data, error } = await supabase
+    .from("districts")
+    .select("id, name, org_id, district_manager_id, stores(id)")
+    .eq("region_id", regionId)
+    .order("name")
+
+  if (error || !data) return []
+
+  return data.map((d: any) => ({
+    id: d.id,
+    name: d.name,
+    orgId: d.org_id,
+    districtManagerId: d.district_manager_id,
+    storeCount: d.stores?.length ?? 0,
+  }))
+}
+
+
+Update createDistrict to accept and insert regionId:
+
+export async function createDistrict(
+  orgId: string,
+  regionId: string,
+  name: string
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("districts")
+    .insert({ org_id: orgId, region_id: regionId, name })
+    .select("id")
+    .maybeSingle()
+
+  if (error) {
+    console.error("createDistrict failed:", error.message)
+    return null
+  }
+  return data?.id ?? null
+}
+
+
+Change 2 of 2 — Rewrite DbAdminPanel.tsx
+
+Rewrite src/pages/admin/DbAdminPanel.tsx to implement the new state flow.
+
+Key Requirements:
+
+Define a discriminated union for the state:
+type AdminView = { level: "orgs" } | { level: "regions"; org: OrgSummary } | { level: "districts"; org: OrgSummary; region: RegionSummary } | { level: "stores"; org: OrgSummary; region: RegionSummary; district: DistrictSummary } | { level: "profiles"; org: OrgSummary; region: RegionSummary; district: DistrictSummary; store: StoreSummary }
+
+Update the Breadcrumb UI at the top to navigate backwards through this state.
+
+In the "orgs" view, display the org.welcomePhrase in a distinct badge (e.g., Code: FRE).
+
+In the "orgs" view, add a Trash/Delete button that calls handleDeleteOrg with a strict window.confirm warning.
+
+Update handleCreateDistrict to pass view.region.id to the repository call.
+
+Execution: Read src/pages/admin/DbAdminPanel.tsx. Apply the 5-tier state changes, ensure the UI matches the Akyra dark theme, and export the updated component.
+
+Verify
+
+CRITICAL OVERRIDE: When you have finished writing and saving the files, you MUST run npm run dev to start the local development server.
+
+Append the following manual testing steps to Prompts/TEST.TODO:
+
+Log in as a DB Admin.
+
+Verify Orgs list loads and displays the "Friendly Code" for each org.
+
+Click an Org -> verify it drills down to Regions.
+
+Create a new Region.
+
+Click a Region -> verify it drills down to Districts.
+
+Create a new District inside that Region.
+
+Go back to the Org view and test deleting a test organization.

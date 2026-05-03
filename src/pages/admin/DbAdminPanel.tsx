@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import {
   fetchAllOrgs,
   fetchStoresForOrg,
@@ -13,6 +13,7 @@ import {
   deleteProfileAndRosterEntry,
   deleteOrganization,
   fetchDistrictsForRegion,
+  fetchProfilesForOrg,
   type OrgSummary,
   type StoreSummary,
   type RegionSummary,
@@ -28,7 +29,8 @@ import { PasswordResetModal } from "../../components/PasswordResetModal"
 import { AkyraLogo } from "../../components/AkyraLogo"
 import { useAuth } from "../../context"
 import { useNavigate } from "react-router-dom"
-import { ChevronRight, Building2, Users, Plus, Trash2 } from "lucide-react"
+import { ChevronRight, Building2, Users, Plus, Trash2, Calendar, AlertTriangle } from "lucide-react"
+import { OrgRadialMenu, type OrgRadialActionDirection } from "../../components/OrgRadialMenu"
 import { Store } from "lucide-react"
 import type { Profile } from "../../types"
 
@@ -54,6 +56,7 @@ interface DistrictSummary {
 type AdminView =
   | { level: "orgs" }
   | { level: "regions"; org: OrgSummary }
+  | { level: "org_associates"; org: OrgSummary }
   | { level: "districts"; org: OrgSummary; region: RegionSummary }
   | { level: "stores"; org: OrgSummary; region: RegionSummary; district: DistrictSummary }
   | { level: "profiles"; org: OrgSummary; region: RegionSummary; district: DistrictSummary; store: StoreSummary }
@@ -90,11 +93,22 @@ export function DbAdminPanel() {
   const [isCreatingStore, setIsCreatingStore] = useState(false)
   const [storeError, setStoreError] = useState<string | null>(null)
   const [isDeletingProfile, setIsDeletingProfile] = useState(false)
+  const [activeOrgMenu, setActiveOrgMenu] = useState<{ org: OrgSummary; position: { x: number; y: number } } | null>(null)
+  const [showWelcomeCode, setShowWelcomeCode] = useState<{ name: string; phrase: string } | null>(null)
+  const [showDangerModal, setShowDangerModal] = useState<OrgSummary | null>(null)
+  const [showLicenseModal, setShowLicenseModal] = useState<OrgSummary | null>(null)
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const isLongPress = useRef(false)
 
   useEffect(() => {
     setIsLoading(true)
     if (view.level === "orgs") {
       fetchAllOrgs().then(data => { setOrgs(data); setIsLoading(false) })
+    } else if (view.level === "org_associates") {
+      fetchProfilesForOrg(view.org.id).then(data => {
+        setProfiles(data)
+        setIsLoading(false)
+      })
     } else if (view.level === "regions") {
       fetchRegionsForOrg(view.org.id).then(data => { setRegions(data); setIsLoading(false) })
     } else if (view.level === "districts") {
@@ -117,6 +131,76 @@ export function DbAdminPanel() {
       })
     }
   }, [view])
+
+  
+  function handleOrgTouchStart(e: React.TouchEvent | React.MouseEvent, org: OrgSummary) {
+    if (longPressTimer.current) clearTimeout(longPressTimer.current)
+    isLongPress.current = false
+    let clientX, clientY;
+    if ("touches" in e) {
+      clientX = e.touches[0].clientX
+      clientY = e.touches[0].clientY
+    } else {
+      clientX = (e as React.MouseEvent).clientX
+      clientY = (e as React.MouseEvent).clientY
+    }
+
+    longPressTimer.current = setTimeout(() => {
+      isLongPress.current = true
+      setActiveOrgMenu({ org, position: { x: clientX, y: clientY } })
+      longPressTimer.current = null
+    }, 500)
+  }
+
+  function handleOrgTouchEnd(org: OrgSummary) {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current)
+      longPressTimer.current = null
+    }
+    if (!isLongPress.current && !activeOrgMenu) {
+      setView({ level: "regions", org })
+    }
+  }
+
+  function handleOrgMenuSelect(direction: OrgRadialActionDirection, org: OrgSummary) {
+    if (direction === "up") {
+      setShowWelcomeCode({
+        name: org.name,
+        phrase: org.welcomePhrase ?? "No welcome code configured"
+      })
+    } else if (direction === "down") {
+      setView({ level: "org_associates", org })
+    } else if (direction === "right") {
+      setShowLicenseModal(org)
+    } else if (direction === "left-hold" || direction === "left") {
+      setShowDangerModal(org)
+    }
+  }
+
+  async function confirmNuclearDelete(org: OrgSummary) {
+    setShowDangerModal(null)
+    setTimeout(async () => {
+      const confirmed = window.confirm(`Are you sure you want to delete this org? Any data not backed up will be lost.`)
+      if (!confirmed) return
+      
+      const typed = window.prompt(`If you are sure, type 'delete', and then tap OK!`)
+      if (typed === "delete") {
+        setIsLoading(true)
+        const success = await deleteOrganization(org.id)
+        if (success) {
+          setOrgs(prev => prev.filter(o => o.id !== org.id))
+          if (view.level !== "orgs" && (view as any).org?.id === org.id) {
+            setView({ level: "orgs" })
+          }
+        } else {
+          alert("Failed to delete organization.")
+        }
+        setIsLoading(false)
+      } else {
+        alert("Deletion cancelled.")
+      }
+    }, 100)
+  }
 
   async function handleCreateDistrict() {
     if (!newDistrictName.trim() || view.level !== "districts") return
@@ -237,6 +321,15 @@ export function DbAdminPanel() {
           </>
         )}
 
+        {(view.level === "org_associates") && (
+          <>
+            <ChevronRight className="w-3 h-3 text-akyra-secondary shrink-0" />
+            <span className="text-xs font-mono text-white shrink-0">
+              All Associates
+            </span>
+          </>
+        )}
+
         {(view.level === "districts" || view.level === "stores" || view.level === "profiles") && (
           <>
             <ChevronRight className="w-3 h-3 text-akyra-secondary shrink-0" />
@@ -291,10 +384,19 @@ export function DbAdminPanel() {
             {view.level === "orgs" && orgs.map(org => (
               <div
                 key={org.id}
-                className="w-full bg-akyra-surface border border-akyra-border rounded-xl p-4 flex items-center justify-between hover:border-white/40 transition-colors cursor-pointer"
-                onClick={() => setView({ level: "regions", org })}
+                className="w-full bg-akyra-surface border border-akyra-border rounded-xl p-4 flex items-center justify-between hover:border-white/40 transition-colors cursor-pointer relative select-none"
+                onMouseDown={e => handleOrgTouchStart(e, org)}
+                onMouseUp={() => handleOrgTouchEnd(org)}
+                onMouseLeave={() => {
+                  if (longPressTimer.current) clearTimeout(longPressTimer.current)
+                }}
+                onTouchStart={e => handleOrgTouchStart(e, org)}
+                onTouchEnd={() => handleOrgTouchEnd(org)}
+                onTouchCancel={() => {
+                  if (longPressTimer.current) clearTimeout(longPressTimer.current)
+                }}
               >
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 pointer-events-none">
                   <Building2 className="w-5 h-5 text-akyra-secondary" />
                   <div className="text-left">
                     <p className="font-semibold text-white">{org.brandName ?? org.name}</p>
@@ -322,47 +424,42 @@ export function DbAdminPanel() {
                     </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={e => {
-                      e.stopPropagation()
-                      setEditingOrg({ id: org.id, name: org.name })
-                    }}
-                    className="text-[10px] font-mono uppercase tracking-widest text-akyra-secondary hover:text-white border border-akyra-border rounded px-2 py-1 transition-colors"
-                  >
-                    Identity
-                  </button>
-                  <button
-                    onClick={e => {
-                      e.stopPropagation()
-                      setManagingStations({ id: org.id, name: org.name })
-                    }}
-                    className="text-[10px] font-mono uppercase tracking-widest text-akyra-secondary hover:text-white border border-akyra-border rounded px-2 py-1 transition-colors"
-                  >
-                    Stations
-                  </button>
-                  <button
-                    onClick={e => {
-                      e.stopPropagation()
-                      setEditingRoles({ id: org.id, name: org.name })
-                    }}
-                    className="text-[10px] font-mono uppercase tracking-widest text-akyra-secondary hover:text-white border border-akyra-border rounded px-2 py-1 transition-colors"
-                  >
-                    Roles
-                  </button>
-                  <button
-                    onClick={e => {
-                      e.stopPropagation()
-                      handleDeleteOrg(org)
-                    }}
-                    className="text-[10px] font-mono uppercase tracking-widest text-akyra-red hover:bg-akyra-red/10 border border-akyra-red/20 rounded px-2 py-1 transition-colors flex items-center gap-1"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </button>
+                <div className="flex items-center gap-3 pointer-events-none">
                   <ChevronRight className="w-4 h-4 text-akyra-secondary" />
                 </div>
               </div>
             ))}
+
+            {/* Org Associates list */}
+            {view.level === "org_associates" && profiles.map(profile => (
+              <div key={profile.id} className="w-full bg-akyra-surface border border-akyra-border rounded-xl p-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-full bg-akyra-border flex items-center justify-center">
+                    <span className="text-sm font-bold text-white">
+                      {profile.display_name.charAt(0)}
+                    </span>
+                  </div>
+                  <div className="text-left">
+                    <p className="font-semibold text-white">{profile.display_name}</p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-xs font-mono text-akyra-secondary">
+                        {profile.eeid}
+                      </span>
+                      <span className="text-[10px] font-mono uppercase tracking-widest text-akyra-secondary">
+                        {getRoleDisplayName(profile.role, orgBranding)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {view.level === "org_associates" && profiles.length === 0 && (
+              <div className="text-center py-12">
+                <Users className="w-10 h-10 text-akyra-border mx-auto mb-3" />
+                <p className="text-akyra-secondary text-sm">No associates found for this organization.</p>
+              </div>
+            )}
 
             {/* Regions list */}
             {view.level === "regions" && (
@@ -779,6 +876,72 @@ export function DbAdminPanel() {
           onDone={() => setResettingProfile(null)}
           onDismiss={() => setResettingProfile(null)}
         />
+      )}
+
+      {activeOrgMenu && (
+        <OrgRadialMenu
+          orgName={activeOrgMenu.org.name}
+          position={activeOrgMenu.position}
+          onSelect={(dir) => handleOrgMenuSelect(dir, activeOrgMenu.org)}
+          onDismiss={() => setActiveOrgMenu(null)}
+        />
+      )}
+
+      {showWelcomeCode && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-akyra-black/90 backdrop-blur-sm p-6" onClick={() => setShowWelcomeCode(null)}>
+          <div className="text-center" onClick={e => e.stopPropagation()}>
+            <p className="text-sm font-mono text-akyra-secondary mb-4 uppercase tracking-widest">{showWelcomeCode.name}</p>
+            <p className="text-4xl font-mono text-white tracking-widest px-8 py-4 border border-white/20 rounded-xl bg-white/5 shadow-[0_0_40px_rgba(255,255,255,0.1)]">
+              {showWelcomeCode.phrase}
+            </p>
+            <p className="text-xs font-mono text-akyra-secondary mt-8 animate-pulse">Tap anywhere to dismiss</p>
+          </div>
+        </div>
+      )}
+
+      {showDangerModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-akyra-black/80 backdrop-blur-sm p-6">
+          <div className="w-full max-w-sm bg-akyra-black border border-akyra-red/40 rounded-2xl p-6 shadow-[0_0_60px_rgba(230,57,70,0.15)]">
+            <div className="flex justify-center mb-4">
+              <AlertTriangle className="w-12 h-12 text-akyra-red" />
+            </div>
+            <h2 className="text-xl font-bold text-white text-center mb-2">NUCLEAR CASCADE</h2>
+            <p className="text-sm text-akyra-secondary text-center mb-6">
+              You are about to permanently delete <strong>{showDangerModal.name}</strong>. This will cascade through all regions, districts, stores, profiles, and associated data.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowDangerModal(null)}
+                className="flex-1 py-3 rounded-xl border border-akyra-border text-akyra-secondary font-mono text-sm uppercase tracking-widest hover:bg-white/5 transition-colors"
+              >
+                Abort
+              </button>
+              <button
+                onClick={() => confirmNuclearDelete(showDangerModal)}
+                className="flex-1 py-3 rounded-xl bg-akyra-red text-white font-mono text-sm uppercase tracking-widest hover:bg-akyra-red/80 transition-colors shadow-[0_0_20px_rgba(230,57,70,0.3)]"
+              >
+                Proceed
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showLicenseModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-akyra-black/80 backdrop-blur-sm p-6" onClick={() => setShowLicenseModal(null)}>
+          <div className="w-full max-w-sm bg-akyra-surface border border-akyra-border rounded-2xl p-6" onClick={e => e.stopPropagation()}>
+             <div className="flex items-center gap-3 mb-4">
+               <Calendar className="w-6 h-6 text-akyra-secondary" />
+               <h2 className="text-lg font-bold text-white">Set License</h2>
+             </div>
+             <p className="text-sm text-akyra-secondary mb-4">Set expiration date for {showLicenseModal.name}</p>
+             <input type="date" className="w-full bg-akyra-black border border-akyra-border rounded-lg px-4 py-3 text-white text-sm focus:outline-none focus:border-white mb-6" />
+             <div className="flex gap-3">
+               <button onClick={() => setShowLicenseModal(null)} className="flex-1 py-3 rounded-xl border border-akyra-border text-akyra-secondary text-sm">Cancel</button>
+               <button onClick={() => setShowLicenseModal(null)} className="flex-1 py-3 rounded-xl bg-white text-black font-bold text-sm">Save</button>
+             </div>
+          </div>
+        </div>
       )}
     </div>
   )

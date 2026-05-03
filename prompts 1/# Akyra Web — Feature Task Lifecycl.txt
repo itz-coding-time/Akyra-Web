@@ -1,0 +1,945 @@
+# Akyra Web — Feature: Task Lifecycle
+
+Do only what is described. Nothing else.
+
+**Context:** Tasks currently exist at the store level with no shift ownership. This feature adds shift-specific task sets, lockout windows, partial completion handoffs, and the neglect engine. A 1st shift bread pull that isn't done inherits to the NEXT 1st shift (not 2nd shift) unless flagged as cross-shift critical. Tasks that are neglected for multiple shifts escalate through orphaned → neglected → critical → incident. Partially completed tasks hand off with progress notes so the next associate picks up where they left off.
+
+**The full task lifecycle:**
+```
+active → in_progress → partial (optional handoff)
+                     → pending_verification → completed ✅
+                     → orphaned (missed one shift)
+                       → neglected (missed two)
+                         → critical (missed three)
+                           → incident (missed four+)
+```
+
+**Task lockout:**
+- Configurable per store per shift bucket
+- Default: 1st shift, 11am-2pm lockout
+- No new tasks can be claimed during lockout
+- In-progress tasks can still be completed
+- Supervisor can override
+
+**Prerequisites:** fix_staggered_shifts complete. All RBAC prompts complete. OPS1-5 complete.
+
+---
+
+## SQL — Run before starting
+
+```sql
+-- Full lifecycle state on tasks
+ALTER TABLE tasks
+  ADD COLUMN IF NOT EXISTS lifecycle_state TEXT NOT NULL DEFAULT 'active'
+    CHECK (lifecycle_state IN (
+      'active',
+      'in_progress',
+      'partial',
+      'pending_verification',
+      'completed',
+      'orphaned',
+      'neglected',
+      'critical',
+      'incident'
+    ));
+
+-- Neglect tracking
+ALTER TABLE tasks
+  ADD COLUMN IF NOT EXISTS neglect_count INTEGER NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS last_neglected_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS is_cross_shift_critical BOOLEAN NOT NULL DEFAULT false;
+
+-- Partial completion
+ALTER TABLE tasks
+  ADD COLUMN IF NOT EXISTS progress_pct INTEGER DEFAULT 0
+    CHECK (progress_pct BETWEEN 0 AND 100),
+  ADD COLUMN IF NOT EXISTS progress_notes TEXT,
+  ADD COLUMN IF NOT EXISTS last_progress_by TEXT,
+  ADD COLUMN IF NOT EXISTS last_progress_at TIMESTAMPTZ;
+
+-- Inheritance tracking
+ALTER TABLE tasks
+  ADD COLUMN IF NOT EXISTS inherited_from_bucket TEXT,
+  ADD COLUMN IF NOT EXISTS inherited_from_associate TEXT,
+  ADD COLUMN IF NOT EXISTS inherited_at TIMESTAMPTZ;
+
+-- Shift ownership
+ALTER TABLE tasks
+  ADD COLUMN IF NOT EXISTS shift_bucket TEXT
+    CHECK (shift_bucket IN ('6a-2p', '2p-10p', '10p-6a', 'any'));
+
+-- Lockout windows
+CREATE TABLE IF NOT EXISTS task_lockout_windows (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  store_id UUID NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+  shift_bucket TEXT NOT NULL CHECK (shift_bucket IN ('6a-2p', '2p-10p', '10p-6a')),
+  lockout_start TIME NOT NULL,
+  lockout_end TIME NOT NULL,
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  created_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (store_id, shift_bucket)
+);
+
+-- Seed default lockout: 1st shift, 11am-2pm
+-- (Replace YOUR_STORE_ID with actual store IDs after running)
+-- INSERT INTO task_lockout_windows (store_id, shift_bucket, lockout_start, lockout_end)
+-- VALUES ('YOUR_STORE_ID', '6a-2p', '11:00', '14:00');
+
+ALTER TABLE task_lockout_windows ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "allow anon select" ON task_lockout_windows FOR SELECT TO anon USING (true);
+CREATE POLICY "allow anon insert" ON task_lockout_windows FOR INSERT TO anon WITH CHECK (true);
+CREATE POLICY "allow anon update" ON task_lockout_windows FOR UPDATE TO anon USING (true);
+
+-- Incident records (formal records when neglect_count >= 4)
+CREATE TABLE IF NOT EXISTS task_incidents (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  store_id UUID NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+  task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  task_name TEXT NOT NULL,
+  shift_bucket TEXT NOT NULL,
+  neglect_count INTEGER NOT NULL,
+  first_neglected_at TIMESTAMPTZ NOT NULL,
+  resolved_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
+  resolved_at TIMESTAMPTZ,
+  resolution_notes TEXT,
+  is_resolved BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+ALTER TABLE task_incidents ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "allow anon select" ON task_incidents FOR SELECT TO anon USING (true);
+CREATE POLICY "allow anon insert" ON task_incidents FOR INSERT TO anon WITH CHECK (true);
+CREATE POLICY "allow anon update" ON task_incidents FOR UPDATE TO anon USING (true);
+
+-- Update tasks index for lifecycle queries
+CREATE INDEX IF NOT EXISTS tasks_lifecycle_idx
+  ON tasks(store_id, lifecycle_state, shift_bucket);
+
+CREATE INDEX IF NOT EXISTS tasks_neglected_idx
+  ON tasks(store_id, neglect_count)
+  WHERE neglect_count > 0;
+
+-- Verify
+SELECT column_name FROM information_schema.columns
+WHERE table_name = 'tasks'
+AND column_name IN (
+  'lifecycle_state', 'neglect_count', 'is_cross_shift_critical',
+  'progress_pct', 'progress_notes', 'shift_bucket',
+  'inherited_from_bucket', 'inherited_from_associate'
+);
+
+SELECT table_name FROM information_schema.tables
+WHERE table_name IN ('task_lockout_windows', 'task_incidents');
+```
+
+---
+
+## Before touching anything:
+
+1. Read `src/lib/repository.ts` — find all task fetch and update methods
+2. Read `src/pages/associate/AssociateTaskView.tsx` in full
+3. Read `src/components/gamification/ExtractionSequence.tsx` in full
+4. Read `src/pages/dashboard/OverviewPage.tsx` — find task assignment
+5. Read `src/pages/dashboard/StoreManagerPage.tsx` — find work orders panel
+
+---
+
+## Change 1 of 7 — Add lifecycle and lockout methods to repository.ts
+
+```typescript
+// ── Task Lifecycle ────────────────────────────────────────────────────────
+
+/**
+ * Check if a task lockout is currently active for a store and shift bucket.
+ */
+export async function checkLockoutActive(
+  storeId: string,
+  shiftBucket: string
+): Promise<boolean> {
+  const { data } = await supabase
+    .from("task_lockout_windows")
+    .select("lockout_start, lockout_end, is_active")
+    .eq("store_id", storeId)
+    .eq("shift_bucket", shiftBucket)
+    .eq("is_active", true)
+    .maybeSingle()
+
+  if (!data) return false
+
+  const now = new Date()
+  const currentTime = `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}`
+
+  return currentTime >= data.lockout_start && currentTime < data.lockout_end
+}
+
+/**
+ * Override lockout for this session (supervisor only).
+ */
+export async function overrideLockout(
+  storeId: string,
+  shiftBucket: string
+): Promise<boolean> {
+  const { error } = await supabase
+    .from("task_lockout_windows")
+    .update({ is_active: false })
+    .eq("store_id", storeId)
+    .eq("shift_bucket", shiftBucket)
+
+  return !error
+}
+
+/**
+ * Restore lockout after supervisor override.
+ */
+export async function restoreLockout(
+  storeId: string,
+  shiftBucket: string
+): Promise<boolean> {
+  const { error } = await supabase
+    .from("task_lockout_windows")
+    .update({ is_active: true })
+    .eq("store_id", storeId)
+    .eq("shift_bucket", shiftBucket)
+
+  return !error
+}
+
+/**
+ * Mark a task as partially complete with progress notes.
+ * Called during extraction when an associate can't finish.
+ */
+export async function markTaskPartial(
+  taskId: string,
+  progressPct: number,
+  progressNotes: string,
+  associateName: string
+): Promise<boolean> {
+  const { error } = await supabase
+    .from("tasks")
+    .update({
+      lifecycle_state: "partial",
+      progress_pct: progressPct,
+      progress_notes: progressNotes,
+      last_progress_by: associateName,
+      last_progress_at: new Date().toISOString(),
+      is_completed: false,
+      pending_verification: false,
+    })
+    .eq("id", taskId)
+
+  return !error
+}
+
+/**
+ * Fetch tasks for an associate filtered by their shift bucket.
+ * Shows: tasks for their bucket + 'any' tasks + inherited cross-shift-critical tasks.
+ * Excludes completed tasks from other buckets.
+ */
+export async function fetchTasksForShift(
+  storeId: string,
+  shiftBucket: string
+): Promise<any[]> {
+  const { data, error } = await supabase
+    .from("tasks")
+    .select("*")
+    .eq("store_id", storeId)
+    .eq("is_completed", false)
+    .or(`shift_bucket.eq.${shiftBucket},shift_bucket.eq.any,shift_bucket.is.null`)
+    .not("lifecycle_state", "eq", "completed")
+    .order("neglect_count", { ascending: false }) // neglected first
+    .order("queue_position", { ascending: true })
+
+  if (error || !data) return []
+  return data
+}
+
+/**
+ * The Neglect Engine.
+ * Run at the end of each shift bucket.
+ * Escalates unfinished tasks through the lifecycle states.
+ */
+export async function runNeglectEngine(
+  storeId: string,
+  endingBucket: "6a-2p" | "2p-10p" | "10p-6a"
+): Promise<void> {
+  // Find all unfinished tasks for this shift bucket
+  const { data: unfinished } = await supabase
+    .from("tasks")
+    .select("id, task_name, neglect_count, lifecycle_state, is_cross_shift_critical, progress_pct, progress_notes, last_progress_by, shift_bucket, last_neglected_at")
+    .eq("store_id", storeId)
+    .eq("is_completed", false)
+    .eq("pending_verification", false)
+    .or(`shift_bucket.eq.${endingBucket},shift_bucket.is.null`)
+    .not("lifecycle_state", "in", '("completed","incident")')
+
+  if (!unfinished) return
+
+  const now = new Date().toISOString()
+
+  for (const task of unfinished) {
+    const newNeglectCount = task.neglect_count + 1
+
+    // Determine new lifecycle state
+    let newState: string
+    if (newNeglectCount >= 4) newState = "incident"
+    else if (newNeglectCount === 3) newState = "critical"
+    else if (newNeglectCount === 2) newState = "neglected"
+    else newState = "orphaned"
+
+    // Update the task
+    await supabase
+      .from("tasks")
+      .update({
+        lifecycle_state: newState,
+        neglect_count: newNeglectCount,
+        last_neglected_at: now,
+      })
+      .eq("id", task.id)
+
+    // Create incident record at 4+ neglects
+    if (newNeglectCount >= 4) {
+      const { data: existing } = await supabase
+        .from("task_incidents")
+        .select("id")
+        .eq("task_id", task.id)
+        .eq("is_resolved", false)
+        .maybeSingle()
+
+      if (!existing) {
+        await supabase.from("task_incidents").insert({
+          store_id: storeId,
+          task_id: task.id,
+          task_name: task.task_name,
+          shift_bucket: endingBucket,
+          neglect_count: newNeglectCount,
+          first_neglected_at: task.last_neglected_at ?? now,
+        })
+      }
+    }
+
+    // Handle cross-shift-critical tasks — copy to next shift's queue
+    if (task.is_cross_shift_critical && newState === "orphaned") {
+      const nextBucket = getNextBucket(endingBucket)
+
+      await supabase
+        .from("tasks")
+        .update({
+          shift_bucket: nextBucket,
+          inherited_from_bucket: endingBucket,
+          inherited_from_associate: task.last_progress_by ?? "Previous shift",
+          inherited_at: now,
+          lifecycle_state: "active",
+          neglect_count: newNeglectCount,
+        })
+        .eq("id", task.id)
+    }
+  }
+
+  // Ping supervisor about neglected/critical tasks
+  const neglected = unfinished.filter(t => t.neglect_count + 1 >= 2)
+  if (neglected.length > 0) {
+    const { data: supervisors } = await supabase
+      .from("active_shifts")
+      .select("associate_id")
+      .eq("store_id", storeId)
+      .eq("is_active", true)
+
+    for (const sup of supervisors ?? []) {
+      await supabase.from("pings").insert({
+        store_id: storeId,
+        from_associate_id: sup.associate_id,
+        to_associate_id: sup.associate_id,
+        message: `${neglected.length} task${neglected.length !== 1 ? "s" : ""} neglected from ${endingBucket} shift. Check the task queue.`,
+        ping_type: "direct",
+      })
+    }
+  }
+}
+
+function getNextBucket(
+  bucket: "6a-2p" | "2p-10p" | "10p-6a"
+): "6a-2p" | "2p-10p" | "10p-6a" {
+  const order: Array<"6a-2p" | "2p-10p" | "10p-6a"> = ["6a-2p", "2p-10p", "10p-6a"]
+  const idx = order.indexOf(bucket)
+  return order[(idx + 1) % 3]
+}
+
+/**
+ * Fetch task incidents for Store Manager work order feed.
+ */
+export async function fetchTaskIncidents(storeId: string): Promise<Array<{
+  id: string
+  taskName: string
+  shiftBucket: string
+  neglectCount: number
+  firstNeglectedAt: string
+  isResolved: boolean
+}>> {
+  const { data, error } = await supabase
+    .from("task_incidents")
+    .select("*")
+    .eq("store_id", storeId)
+    .order("neglect_count", { ascending: false })
+
+  if (error || !data) return []
+
+  return data.map(i => ({
+    id: i.id,
+    taskName: i.task_name,
+    shiftBucket: i.shift_bucket,
+    neglectCount: i.neglect_count,
+    firstNeglectedAt: i.first_neglected_at,
+    isResolved: i.is_resolved,
+  }))
+}
+
+export async function resolveTaskIncident(
+  incidentId: string,
+  resolvedById: string,
+  notes: string
+): Promise<boolean> {
+  const { error } = await supabase
+    .from("task_incidents")
+    .update({
+      is_resolved: true,
+      resolved_by: resolvedById,
+      resolved_at: new Date().toISOString(),
+      resolution_notes: notes,
+    })
+    .eq("id", incidentId)
+
+  return !error
+}
+```
+
+---
+
+## Change 2 of 7 — Create LockoutScreen component
+
+Create `src/components/LockoutScreen.tsx`:
+
+```tsx
+import { useState } from "react"
+import { overrideLockout } from "../lib"
+import { Shield } from "lucide-react"
+
+interface LockoutScreenProps {
+  storeId: string
+  shiftBucket: string
+  lockoutEndsAt: string // "14:00"
+  isSupervisor: boolean
+  supervisorAssociateId?: string
+  onOverride: () => void
+}
+
+export function LockoutScreen({
+  storeId,
+  shiftBucket,
+  lockoutEndsAt,
+  isSupervisor,
+  supervisorAssociateId,
+  onOverride,
+}: LockoutScreenProps) {
+  const [isOverriding, setIsOverriding] = useState(false)
+
+  async function handleOverride() {
+    if (!supervisorAssociateId) return
+    setIsOverriding(true)
+    await overrideLockout(storeId, shiftBucket)
+    setIsOverriding(false)
+    onOverride()
+  }
+
+  return (
+    <div className="flex flex-col items-center justify-center flex-1 px-6 py-12 text-center space-y-6">
+      <div className="fixed inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute inset-0 bg-[#E63946]/[0.02]" />
+      </div>
+
+      <div className="relative z-10 space-y-6">
+        <div className="w-16 h-16 rounded-full bg-[#E63946]/10 border border-[#E63946]/20 flex items-center justify-center mx-auto">
+          <Shield className="w-7 h-7 text-[#E63946]/60" />
+        </div>
+
+        <div className="space-y-2">
+          <p className="text-[10px] font-mono uppercase tracking-[0.4em] text-[#E63946]/40">
+            Task Lockout
+          </p>
+          <p className="text-2xl font-black text-white">
+            Hands on deck.
+          </p>
+          <p className="text-sm text-white/40 max-w-xs mx-auto">
+            Task queue is locked during peak hours. Focus on the floor.
+          </p>
+        </div>
+
+        <div className="bg-white/[0.03] border border-white/10 rounded-2xl px-6 py-4">
+          <p className="text-[10px] font-mono text-white/20 uppercase tracking-widest mb-1">
+            Lockout ends
+          </p>
+          <p className="text-3xl font-black font-mono text-white">
+            {lockoutEndsAt}
+          </p>
+        </div>
+
+        {isSupervisor && (
+          <button
+            onClick={handleOverride}
+            disabled={isOverriding}
+            className="text-xs font-mono text-white/20 hover:text-white/40 transition-colors"
+          >
+            {isOverriding ? "Overriding..." : "Override lockout (supervisor)"}
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+```
+
+Export from `src/components/index.ts`:
+
+```typescript
+export { LockoutScreen } from "./LockoutScreen"
+```
+
+---
+
+## Change 3 of 7 — Create PartialCompletionModal component
+
+Create `src/components/PartialCompletionModal.tsx`:
+
+```tsx
+import { useState } from "react"
+import { markTaskPartial } from "../lib"
+import { LoadingSpinner } from "./LoadingSpinner"
+import { X } from "lucide-react"
+
+interface PartialCompletionModalProps {
+  taskId: string
+  taskName: string
+  associateName: string
+  onSaved: () => void
+  onDismiss: () => void
+}
+
+export function PartialCompletionModal({
+  taskId,
+  taskName,
+  associateName,
+  onSaved,
+  onDismiss,
+}: PartialCompletionModalProps) {
+  const [progressPct, setProgressPct] = useState(50)
+  const [notes, setNotes] = useState("")
+  const [isSaving, setIsSaving] = useState(false)
+
+  async function handleSave() {
+    setIsSaving(true)
+    await markTaskPartial(taskId, progressPct, notes, associateName)
+    setIsSaving(false)
+    onSaved()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center">
+      <div className="absolute inset-0 bg-black/70" onClick={onDismiss} />
+      <div className="relative w-full max-w-lg bg-akyra-surface border-t border-akyra-border rounded-t-2xl p-6 space-y-5">
+
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="font-bold text-white">Partial Handoff</p>
+            <p className="text-xs font-mono text-akyra-secondary">{taskName}</p>
+          </div>
+          <button onClick={onDismiss} className="text-akyra-secondary hover:text-white">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <p className="text-sm text-akyra-secondary">
+          How much is done? The next shift picks up where you left off.
+        </p>
+
+        {/* Progress slider */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-mono text-akyra-secondary uppercase tracking-widest">
+              Progress
+            </p>
+            <p className="text-sm font-black text-white">{progressPct}%</p>
+          </div>
+          <input
+            type="range"
+            min={5}
+            max={95}
+            step={5}
+            value={progressPct}
+            onChange={e => setProgressPct(Number(e.target.value))}
+            className="w-full accent-white"
+          />
+          <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-white rounded-full transition-all"
+              style={{ width: `${progressPct}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Notes */}
+        <div className="space-y-2">
+          <p className="text-xs font-mono text-akyra-secondary uppercase tracking-widest">
+            Notes for next shift
+          </p>
+          <textarea
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+            placeholder="e.g. Pulled items 1-3, ran out of time. Items 4-6 still needed."
+            rows={3}
+            className="w-full bg-akyra-black border border-akyra-border rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-white resize-none"
+          />
+        </div>
+
+        <div className="flex gap-3">
+          <button
+            onClick={onDismiss}
+            className="flex-1 py-3 rounded-xl border border-akyra-border text-akyra-secondary text-sm"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={isSaving}
+            className="flex-1 py-3 rounded-xl bg-white text-black font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {isSaving ? <><LoadingSpinner size="sm" /> Saving...</> : "Hand Off"}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+```
+
+Export from `src/components/index.ts`:
+
+```typescript
+export { PartialCompletionModal } from "./PartialCompletionModal"
+```
+
+---
+
+## Change 4 of 7 — Update AssociateTaskView for lockout, partial completion, and lifecycle indicators
+
+In `src/pages/associate/AssociateTaskView.tsx`:
+
+```tsx
+import { LockoutScreen } from "../../components/LockoutScreen"
+import { PartialCompletionModal } from "../../components/PartialCompletionModal"
+import { checkLockoutActive, fetchTasksForShift } from "../../lib"
+
+// Add state:
+const [lockoutActive, setLockoutActive] = useState(false)
+const [lockoutOverridden, setLockoutOverridden] = useState(false)
+const [showPartialModal, setShowPartialModal] = useState<{
+  taskId: string
+  taskName: string
+} | null>(null)
+
+// Check lockout every minute:
+useEffect(() => {
+  if (!associate.store_id || !shiftBucket) return
+
+  async function checkLockout() {
+    const active = await checkLockoutActive(associate.store_id, shiftBucket)
+    setLockoutActive(active && !lockoutOverridden)
+  }
+
+  checkLockout()
+  const interval = setInterval(checkLockout, 60 * 1000)
+  return () => clearInterval(interval)
+}, [associate.store_id, shiftBucket, lockoutOverridden])
+
+// Show lockout screen if active:
+if (lockoutActive) {
+  return (
+    <div className="min-h-screen bg-black flex flex-col">
+      {/* Keep header */}
+      <LockoutScreen
+        storeId={associate.store_id}
+        shiftBucket={shiftBucket}
+        lockoutEndsAt="14:00"
+        isSupervisor={(associate.role_rank ?? 1) >= 2}
+        supervisorAssociateId={associate.id}
+        onOverride={() => setLockoutOverridden(true)}
+      />
+    </div>
+  )
+}
+
+// Update task card rendering to show lifecycle indicators:
+// Add to task card:
+{task.lifecycle_state === "neglected" && (
+  <div className="flex items-center gap-1 mt-1">
+    <div className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse" />
+    <span className="text-[9px] font-mono text-orange-400 uppercase tracking-widest">
+      Neglected · {task.neglect_count} shift{task.neglect_count !== 1 ? "s" : ""}
+    </span>
+  </div>
+)}
+
+{task.lifecycle_state === "critical" && (
+  <div className="flex items-center gap-1 mt-1">
+    <div className="w-1.5 h-1.5 rounded-full bg-[#E63946] animate-pulse" />
+    <span className="text-[9px] font-mono text-[#E63946] uppercase tracking-widest">
+      Critical · {task.neglect_count} shifts
+    </span>
+  </div>
+)}
+
+{task.inherited_from_bucket && (
+  <p className="text-[9px] font-mono text-white/20 mt-0.5">
+    Picked up from {task.inherited_from_bucket}
+    {task.inherited_from_associate && ` · ${task.inherited_from_associate}`}
+  </p>
+)}
+
+{task.progress_pct > 0 && task.lifecycle_state === "partial" && (
+  <div className="mt-2 space-y-1">
+    <div className="flex items-center justify-between">
+      <span className="text-[9px] font-mono text-white/30">Progress</span>
+      <span className="text-[9px] font-mono text-white/50">{task.progress_pct}%</span>
+    </div>
+    <div className="h-1 bg-white/10 rounded-full overflow-hidden">
+      <div
+        className="h-full bg-white/40 rounded-full"
+        style={{ width: `${task.progress_pct}%` }}
+      />
+    </div>
+    {task.progress_notes && (
+      <p className="text-[9px] text-white/30 font-mono">{task.progress_notes}</p>
+    )}
+  </div>
+)}
+
+// Add "Partial handoff" option during extraction:
+// In the extraction sequence, add a "Can't finish" button on in-progress tasks:
+<button
+  onClick={() => setShowPartialModal({ taskId: task.id, taskName: task.task_name })}
+  className="text-[10px] font-mono text-white/20 hover:text-white/40 transition-colors"
+>
+  Can't finish — hand off
+</button>
+
+// Render partial modal:
+{showPartialModal && (
+  <PartialCompletionModal
+    taskId={showPartialModal.taskId}
+    taskName={showPartialModal.taskName}
+    associateName={associate.name}
+    onSaved={() => {
+      setShowPartialModal(null)
+      refetch()
+    }}
+    onDismiss={() => setShowPartialModal(null)}
+  />
+)}
+```
+
+---
+
+## Change 5 of 7 — Add task incidents to StoreManagerPage Work Orders panel
+
+In `src/pages/dashboard/StoreManagerPage.tsx`, add incidents to the Work Orders panel:
+
+```tsx
+import { fetchTaskIncidents, resolveTaskIncident } from "../../lib"
+
+// Add state:
+const [incidents, setIncidents] = useState<any[]>([])
+
+// Add to data loading:
+fetchTaskIncidents(storeId),
+
+// Wire into incidents state
+
+// Add to Work Orders panel, above equipment issues:
+{incidents.filter(i => !i.isResolved).length > 0 && (
+  <div className="space-y-2 mb-4">
+    <p className="text-[10px] font-mono uppercase tracking-widest text-[#E63946]/60">
+      ⚠ Neglected Tasks — Formal Incidents
+    </p>
+    {incidents.filter(i => !i.isResolved).map(incident => (
+      <div
+        key={incident.id}
+        className="bg-[#E63946]/[0.05] border border-[#E63946]/30 rounded-xl p-4 space-y-2"
+      >
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="font-semibold text-white">{incident.taskName}</p>
+            <p className="text-xs font-mono text-[#E63946]/60">
+              {incident.neglectCount} shift{incident.neglectCount !== 1 ? "s" : ""} neglected · {incident.shiftBucket}
+            </p>
+            <p className="text-[10px] text-white/20 mt-0.5">
+              First missed: {new Date(incident.firstNeglectedAt).toLocaleDateString()}
+            </p>
+          </div>
+          <span className="text-[9px] font-mono text-[#E63946] border border-[#E63946]/30 rounded px-2 py-0.5 shrink-0">
+            Incident
+          </span>
+        </div>
+
+        <button
+          onClick={async () => {
+            const notes = `Resolved by Store Manager`
+            await resolveTaskIncident(incident.id, state.profile?.id ?? "", notes)
+            setIncidents(prev => prev.map(i =>
+              i.id === incident.id ? { ...i, isResolved: true } : i
+            ))
+          }}
+          className="text-xs font-mono text-white/30 hover:text-white transition-colors"
+        >
+          Mark Resolved →
+        </button>
+      </div>
+    ))}
+  </div>
+)}
+```
+
+---
+
+## Change 6 of 7 — Add neglect engine trigger to Ghost Protocol
+
+In `src/lib/repository.ts`, update the shift close / Ghost Protocol handler to trigger the neglect engine:
+
+```typescript
+export async function closeShift(
+  associateId: string,
+  storeId: string
+): Promise<void> {
+  // Get the shift bucket before closing
+  const { data: shift } = await supabase
+    .from("active_shifts")
+    .select("shift_bucket")
+    .eq("associate_id", associateId)
+    .eq("store_id", storeId)
+    .eq("is_active", true)
+    .maybeSingle()
+
+  // Close the shift
+  await supabase
+    .from("active_shifts")
+    .update({ is_active: false })
+    .eq("associate_id", associateId)
+    .eq("store_id", storeId)
+
+  // Check if this was the LAST active associate for this shift bucket
+  if (shift?.shift_bucket) {
+    const { count } = await supabase
+      .from("active_shifts")
+      .select("*", { count: "exact", head: true })
+      .eq("store_id", storeId)
+      .eq("is_active", true)
+      .eq("shift_bucket", shift.shift_bucket)
+
+    // If no more active associates in this bucket, run neglect engine
+    if ((count ?? 0) === 0) {
+      await runNeglectEngine(storeId, shift.shift_bucket as "6a-2p" | "2p-10p" | "10p-6a")
+    }
+  }
+}
+```
+
+---
+
+## Change 7 of 7 — Add shift_bucket to task creation
+
+In supervisor task creation (wherever tasks are inserted), add shift_bucket based on current time:
+
+```typescript
+// When creating a task, infer shift bucket from current time:
+function getCurrentShiftBucket(): "6a-2p" | "2p-10p" | "10p-6a" {
+  const hour = new Date().getHours()
+  if (hour >= 6 && hour < 14) return "6a-2p"
+  if (hour >= 14 && hour < 22) return "2p-10p"
+  return "10p-6a"
+}
+
+// Add to task insert:
+shift_bucket: getCurrentShiftBucket(),
+lifecycle_state: "active",
+```
+
+Add "Cross-shift critical" toggle to task creation UI:
+
+```tsx
+// In CreateTaskFAB or task creation form:
+<div className="flex items-center justify-between">
+  <div>
+    <p className="text-sm text-white">Cross-shift critical</p>
+    <p className="text-[10px] text-white/30 font-mono">
+      Inherits to next shift if not completed
+    </p>
+  </div>
+  <button
+    onClick={() => setCrossShiftCritical(!crossShiftCritical)}
+    className={`w-10 h-6 rounded-full transition-colors ${
+      crossShiftCritical ? "bg-[#E63946]" : "bg-white/10"
+    }`}
+  >
+    <div className={`w-4 h-4 rounded-full bg-white mx-1 transition-transform ${
+      crossShiftCritical ? "translate-x-4" : "translate-x-0"
+    }`} />
+  </button>
+</div>
+```
+
+---
+
+## Verify
+
+Run:
+
+```bash
+npm run build
+```
+
+**Test shift-specific tasks:**
+1. Create a task with shift_bucket = '10p-6a'
+2. Sign in as a 1st shift associate (shift_bucket = '6a-2p')
+3. Task should NOT appear in their queue
+4. Sign in as 3rd shift associate → task appears ✅
+
+**Test lockout:**
+1. Insert a lockout window: store_id, bucket='6a-2p', lockout_start='11:00', lockout_end='14:00'
+2. Set system time to 11:30am (or test with a current-time lockout)
+3. 1st shift associate opens task view → LockoutScreen appears
+4. Supervisor taps "Override lockout" → task view resumes
+
+**Test partial completion:**
+1. Associate starts a task
+2. During extraction: "Can't finish — hand off"
+3. Set progress to 60%, add notes
+4. Task appears in next shift's queue with progress bar and notes
+5. `lifecycle_state = 'partial'` in Supabase ✅
+
+**Test neglect engine:**
+1. Leave tasks incomplete at end of a shift
+2. Manually call `runNeglectEngine` or close all active shifts for that bucket
+3. Tasks should show `lifecycle_state = 'orphaned'`, `neglect_count = 1`
+4. Run again → `neglected`, `neglect_count = 2`
+5. Run again → `critical`, `neglect_count = 3`
+6. Run again → `incident`, task_incidents record created ✅
+
+**Test incident in Store Manager:**
+- Work Orders panel shows incident record with red border
+- "Mark Resolved" clears it
+
+**Test cross-shift critical inheritance:**
+1. Create task with `is_cross_shift_critical = true`, `shift_bucket = '6a-2p'`
+2. Run neglect engine for '6a-2p'
+3. Task should now have `shift_bucket = '2p-10p'`, `inherited_from_bucket = '6a-2p'`
+4. 2nd shift associate sees it with "Picked up from 6a-2p" label ✅
+
+Build must pass with zero TypeScript errors before you stop.
