@@ -43,14 +43,14 @@ export function ClaimAccountScreen({ eeid, welcomePhrase, onBack }: ClaimAccount
     setError(null)
     setIsLoading(true)
 
-    const profile = await registerAuthForOrg(eeid, pin, welcomePhrase)
+    const { profile, error: regError } = await registerAuthForOrg(eeid, pin, welcomePhrase)
     setIsLoading(false)
 
     if (profile) {
       await resolveSession()
       navigate("/app/dashboard")
     } else {
-      setError("Could not complete setup. Please try again.")
+      setError(regError || "Could not complete setup. Please try again.")
     }
   }
 

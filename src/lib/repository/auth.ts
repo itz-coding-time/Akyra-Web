@@ -245,7 +245,7 @@ export async function registerAuthForOrg(
   eeid: string,
   password: string,
   welcomePhrase: string
-): Promise<Profile | null> {
+): Promise<{ profile: Profile | null; error?: string }> {
   const { data: license, error: licenseError } = await supabase
     .from("licenses")
     .select("org_id")
@@ -254,7 +254,32 @@ export async function registerAuthForOrg(
 
   if (licenseError || !license) {
     console.error("[Auth] Registration org lookup failed:", licenseError?.message)
-    return null
+    return { profile: null, error: "SYNC_ERROR: ORG_LOOKUP_FAILED" }
+  }
+
+  // 1. Ensure profile exists and get it
+  const { data: existingProfile, error: profileLookupError } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("eeid", eeid)
+    .eq("org_id", license.org_id)
+    .maybeSingle()
+
+  if (profileLookupError || !existingProfile) {
+    return { profile: null, error: "SYNC_ERROR: PROFILE_NOT_FOUND" }
+  }
+
+  // 2. Verify against associates table (must have an associate record to claim)
+  const { data: associates, error: associateError } = await supabase
+    .from("associates")
+    .select("*")
+    .eq("store_id", existingProfile.current_store_id ?? "")
+    .ilike("name", existingProfile.display_name) // fallback match since associates lacks eeid
+  
+  const associateMatch = associates?.find(a => a.profile_id === existingProfile.id) || associates?.[0]
+
+  if (associateError || !associateMatch) {
+    return { profile: null, error: "SYNC_ERROR: ASSOCIATE_RECORD_MISSING" }
   }
 
   const syntheticEmail = buildSyntheticEmail(eeid, welcomePhrase)
@@ -276,31 +301,39 @@ export async function registerAuthForOrg(
       })
       if (signInError || !signInData.user) {
         console.error("[Auth] Already registered but wrong password")
-        return null
+        return { profile: null, error: "SYNC_ERROR: EEID_ALREADY_LINKED" }
       }
       authUid = signInData.user.id
     } else {
       console.error("[Auth] Registration failed:", signUpError.message)
-      return null
+      return { profile: null, error: `SYNC_ERROR: AUTH_FAILED (${signUpError.message})` }
     }
   } else {
     authUid = signUpData.user?.id ?? null
   }
 
-  if (!authUid) return null
+  if (!authUid) return { profile: null, error: "SYNC_ERROR: NO_AUTH_UID" }
 
-  // Link auth_uid to the profile in this org only. EEIDs can repeat across orgs.
+  // 3. Link auth_uid to the profile in this org only
   const { error: updateError } = await supabase
     .from("profiles")
     .update({ auth_uid: authUid })
-    .eq("eeid", eeid)
-    .eq("org_id", license.org_id)
+    .eq("id", existingProfile.id)
 
   if (updateError) {
     console.error("[Auth] Profile auth link failed:", updateError.message)
-    return null
+    return { profile: null, error: `SYNC_ERROR: PROFILE_LINK_FAILED (${updateError.message})` }
   }
 
-  return fetchProfileByEeidAndOrg(eeid, welcomePhrase)
+  // 4. Ensure associates table update is atomic with profiles
+  if (associateMatch.profile_id !== existingProfile.id) {
+    await supabase
+      .from("associates")
+      .update({ profile_id: existingProfile.id })
+      .eq("id", associateMatch.id)
+  }
+
+  const finalProfile = await fetchProfileByEeidAndOrg(eeid, welcomePhrase)
+  return { profile: finalProfile, error: finalProfile ? undefined : "SYNC_ERROR: FINAL_FETCH_FAILED" }
 }
 
