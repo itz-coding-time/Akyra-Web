@@ -74,7 +74,7 @@ export function StationManager({ orgId, orgName, onDone }: StationManagerProps) 
 
   async function handleDelete(stationId: string) {
     if (!confirm("Remove this station? Associates currently using it will keep their archetype but the station won't appear for new claims.")) return
-    await deleteOrgStation(stationId)
+    await deleteOrgStation(orgId, stationId)
     setStations(prev => prev.filter(s => s.id !== stationId))
   }
 

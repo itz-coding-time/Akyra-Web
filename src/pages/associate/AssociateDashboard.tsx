@@ -228,7 +228,7 @@ export function AssociateDashboard({ associate }: AssociateDashboardProps) {
   if (showResults) {
     return (
       <EndOfShiftResults
-        teamResults={teamResults}
+        teamResults={teamResults as any}
         myAssociateId={associate.id}
         onDone={handleResultsDone}
       />

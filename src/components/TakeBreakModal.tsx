@@ -6,29 +6,27 @@ import { Coffee, X } from "lucide-react"
 interface TakeBreakModalProps {
   associateId: string
   storeId: string
-  roleRank: number
-  onBreakStarted: (breakStartedAt: string) => void
+  onStarted: (breakStartedAt: string) => void
   onDismiss: () => void
 }
 
 export function TakeBreakModal({
   associateId,
   storeId,
-  roleRank,
-  onBreakStarted,
+  onStarted,
   onDismiss,
 }: TakeBreakModalProps) {
   const [isChecking, setIsChecking] = useState(false)
   const [isStarting, setIsStarting] = useState(false)
   const [checkResult, setCheckResult] = useState<{
-    allowed: boolean
+    canTake: boolean
     coveringName?: string
     reason?: string
   } | null>(null)
 
   async function handleCheck() {
     setIsChecking(true)
-    const result = await canTakeBreak(associateId, storeId, roleRank)
+    const result = await canTakeBreak(associateId, storeId)
     setCheckResult(result)
     setIsChecking(false)
   }
@@ -37,7 +35,7 @@ export function TakeBreakModal({
     setIsStarting(true)
     const success = await startBreak(associateId, storeId)
     if (success) {
-      onBreakStarted(new Date().toISOString())
+      onStarted(new Date().toISOString())
     }
     setIsStarting(false)
   }
@@ -68,7 +66,7 @@ export function TakeBreakModal({
           </div>
         ) : checkResult ? (
           <>
-            {checkResult.allowed ? (
+            {checkResult.canTake ? (
               <div className="space-y-4">
                 <div className="bg-white/[0.03] border border-white/10 rounded-xl p-4 space-y-1">
                   <p className="text-sm text-white">30-minute break</p>

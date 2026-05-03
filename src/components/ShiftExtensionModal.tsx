@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { extendShift, closeShiftEarly } from "../lib"
+import { extendShift, closeShift } from "../lib"
 import { LoadingSpinner } from "./LoadingSpinner"
 
 interface ShiftExtensionModalProps {
@@ -17,31 +17,31 @@ export function ShiftExtensionModal({
   minutesOverdue,
   onExtended,
   onLeaving,
-  onLeft,
 }: ShiftExtensionModalProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [showExtensionOptions, setShowExtensionOptions] = useState(false)
 
   async function handleExtend(minutes: number) {
     setIsLoading(true)
-    await extendShift(associateId, storeId, minutes, "extending")
+    await extendShift(associateId, storeId, minutes)
     setIsLoading(false)
     onExtended()
   }
 
   async function handleLeavingSoon() {
     setIsLoading(true)
-    await extendShift(associateId, storeId, 15, "leaving_soon")
+    await extendShift(associateId, storeId, 15)
     setIsLoading(false)
     onLeaving()
   }
 
   async function handleAlreadyLeft() {
     setIsLoading(true)
-    await closeShiftEarly(associateId, storeId)
+    await closeShift(associateId, storeId)
     setIsLoading(false)
-    onLeft()
+    onLeaving()
   }
+
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center">
