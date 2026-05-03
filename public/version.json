@@ -1,5 +1,5 @@
 {
-  "version": "1.0",
-  "released": "2026-05-02",
-  "notes": "All changes made. Ready for INDEV testing."
+  "version": "1.1",
+  "released": "2026-05-03",
+  "notes": "We implemented a gesture-driven organization management UI featuring a multi-stage 'Nuclear Cascade' deletion protocol and resolved a critical bug in the associate account claiming flow to ensure seamless authentication and onboarding."
 }
