@@ -1,7 +1,7 @@
 import { supabase } from '../supabase'
-import type { Database } from "../types/database.types"
-import type { PullEventSummary } from "../types/pullWorkflow.types"
-import type { StoreConfigAssociate, StoreConfigTask, StoreConfigInventoryItem, StoreConfigTableItem, StoreConfig } from "../types/storeConfig.types"
+import type { Database } from "../../types/database.types"
+import type { PullEventSummary } from "../../types/pullWorkflow.types"
+import type { StoreConfigAssociate, StoreConfigTask, StoreConfigInventoryItem, StoreConfigTableItem, StoreConfig } from "../../types/storeConfig.types"
 import {
   startRegistration,
   startAuthentication,
@@ -71,7 +71,7 @@ export async function uploadOrgLogo(
   return urlData.publicUrl
 }
 
-export async function fetchOrgBranding(orgId: string): Promise<import("../types").OrgBranding | null> {
+export async function fetchOrgBranding(orgId: string): Promise<import("../../types").OrgBranding | null> {
   const { data, error } = await supabase
     .from("organizations")
     .select("id, name, brand_name, brand_color, logo_url, terminology")
@@ -114,14 +114,14 @@ export async function fetchOrgBranding(orgId: string): Promise<import("../types"
  */
 export function getRoleDisplayName(
   role: string,
-  orgBranding: import("../types").OrgBranding | null
+  orgBranding: import("../../types").OrgBranding | null
 ): string {
   if (!orgBranding) return role
   const roles = orgBranding.terminology.roles as Record<string, string>
   return roles[role] ?? role
 }
 
-export async function fetchOrgStations(orgId: string): Promise<import("../types").OrgStation[]> {
+export async function fetchOrgStations(orgId: string): Promise<import("../../types").OrgStation[]> {
   const { data, error } = await supabase
     .from("org_stations")
     .select("*")
@@ -141,4 +141,8 @@ export async function fetchOrgStations(orgId: string): Promise<import("../types"
     displayOrder: s.display_order,
   }))
 }
+
+
+
+
 

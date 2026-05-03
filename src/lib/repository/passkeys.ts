@@ -1,12 +1,14 @@
 import { supabase } from '../supabase'
-import type { Database } from "../types/database.types"
-import type { PullEventSummary } from "../types/pullWorkflow.types"
-import type { StoreConfigAssociate, StoreConfigTask, StoreConfigInventoryItem, StoreConfigTableItem, StoreConfig } from "../types/storeConfig.types"
+import type { Database } from "../../types/database.types"
+import type { PullEventSummary } from "../../types/pullWorkflow.types"
+import type { StoreConfigAssociate, StoreConfigTask, StoreConfigInventoryItem, StoreConfigTableItem, StoreConfig } from "../../types/storeConfig.types"
 import {
   startRegistration,
   startAuthentication,
   browserSupportsWebAuthn,
 } from "@simplewebauthn/browser"
+import { fetchProfileByEeid, fetchProfileByEeidAndOrg } from "./profiles"
+import { fetchWelcomePhraseForOrg, buildSyntheticEmail } from "./auth"
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"]
 type ActiveShift = Database["public"]["Tables"]["active_shifts"]["Row"]
@@ -166,4 +168,8 @@ export async function removePasskeys(): Promise<boolean> {
   }
   return true
 }
+
+
+
+
 

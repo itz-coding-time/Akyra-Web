@@ -1,12 +1,13 @@
 import { supabase } from '../supabase'
-import type { Database } from "../types/database.types"
-import type { PullEventSummary } from "../types/pullWorkflow.types"
-import type { StoreConfigAssociate, StoreConfigTask, StoreConfigInventoryItem, StoreConfigTableItem, StoreConfig } from "../types/storeConfig.types"
+import type { Database } from "../../types/database.types"
+import type { PullEventSummary } from "../../types/pullWorkflow.types"
+import type { StoreConfigAssociate, StoreConfigTask, StoreConfigInventoryItem, StoreConfigTableItem, StoreConfig } from "../../types/storeConfig.types"
 import {
   startRegistration,
   startAuthentication,
   browserSupportsWebAuthn,
 } from "@simplewebauthn/browser"
+import { fetchProfileByEeid } from "./profiles"
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"]
 type ActiveShift = Database["public"]["Tables"]["active_shifts"]["Row"]
@@ -157,4 +158,8 @@ export async function fetchLicenseForProfile(
 export async function signOut(): Promise<void> {
   await supabase.auth.signOut()
 }
+
+
+
+
 
