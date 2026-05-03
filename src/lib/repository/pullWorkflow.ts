@@ -1,7 +1,7 @@
 import { supabase } from '../supabase'
-import type { Database } from "../types/database.types"
-import type { PullEventSummary } from "../types/pullWorkflow.types"
-import type { StoreConfigAssociate, StoreConfigTask, StoreConfigInventoryItem, StoreConfigTableItem, StoreConfig } from "../types/storeConfig.types"
+import type { Database } from "../../types/database.types"
+import type { PullEventSummary } from "../../types/pullWorkflow.types"
+import type { StoreConfigAssociate, StoreConfigTask, StoreConfigInventoryItem, StoreConfigTableItem, StoreConfig } from "../../types/storeConfig.types"
 import {
   startRegistration,
   startAuthentication,
@@ -229,10 +229,14 @@ export async function hasExpiringPullEvents(storeId: string): Promise<boolean> {
   return (count ?? 0) > 0
 }
 
-function getCurrentShiftBucket(): "6a-2p" | "2p-10p" | "10p-6a" {
+export function getCurrentShiftBucket(): "6a-2p" | "2p-10p" | "10p-6a" {
   const hour = new Date().getHours()
   if (hour >= 6 && hour < 14) return "6a-2p"
   if (hour >= 14 && hour < 22) return "2p-10p"
   return "10p-6a"
 }
+
+
+
+
 

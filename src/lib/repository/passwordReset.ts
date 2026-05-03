@@ -1,7 +1,7 @@
 import { supabase } from '../supabase'
-import type { Database } from "../types/database.types"
-import type { PullEventSummary } from "../types/pullWorkflow.types"
-import type { StoreConfigAssociate, StoreConfigTask, StoreConfigInventoryItem, StoreConfigTableItem, StoreConfig } from "../types/storeConfig.types"
+import type { Database } from "../../types/database.types"
+import type { PullEventSummary } from "../../types/pullWorkflow.types"
+import type { StoreConfigAssociate, StoreConfigTask, StoreConfigInventoryItem, StoreConfigTableItem, StoreConfig } from "../../types/storeConfig.types"
 import {
   startRegistration,
   startAuthentication,
@@ -43,4 +43,8 @@ export function generateTempPassword(): string {
   const num = Math.floor(Math.random() * 900) + 100
   return `${word}${num}!`
 }
+
+
+
+
 

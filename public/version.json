@@ -1,5 +1,5 @@
 {
-  "version": "1.1.5",
+  "version": "1.1.7",
   "released": "2026-05-03",
-  "notes": "Enabled native Supabase session detection (detectSessionInUrl: true) to eliminate lock contention during OAuth redirects."
+  "notes": "Implemented Auth Guard (PublicRoute) for automatic dashboard redirection, optimized login/onboarding to prioritize signInWithPassword, and removed legacy /login route."
 }

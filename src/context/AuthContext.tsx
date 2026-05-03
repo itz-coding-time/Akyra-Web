@@ -202,31 +202,64 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     ): Promise<SignInResult> => {
       setState((s) => ({ ...s, status: "loading" }))
 
-      // Step 1: Create auth user first — profile.id must reference auth.users.id
+      // Step 1: Attempt sign in first (recovery path)
       const syntheticEmail = `${eeid}@akyra.internal`
-      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+      let authUserId: string | null = null
+
+      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
         email: syntheticEmail,
         password: pin,
       })
-      if (signUpError || !signUpData.user) {
-        setState((s) => ({ ...s, status: "signed-out", error: "Auth setup failed" }))
-        return { kind: "error", message: "Could not create your account. Try again." }
+
+      if (!signInError && signInData.user) {
+        authUserId = signInData.user.id
+      } else {
+        // Step 2: Create auth user if sign-in failed
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+          email: syntheticEmail,
+          password: pin,
+        })
+
+        if (signUpError) {
+          if (signUpError.message.includes("already registered")) {
+            // Race condition or previously created but wrong password?
+            const { data: retrySignInData, error: retrySignInError } = await supabase.auth.signInWithPassword({
+              email: syntheticEmail,
+              password: pin,
+            })
+            if (retrySignInError || !retrySignInData.user) {
+              setState((s) => ({ ...s, status: "signed-out", error: "Auth account already exists but password mismatch." }))
+              return { kind: "error", message: "Account already exists but could not sign in. Try logging in." }
+            }
+            authUserId = retrySignInData.user.id
+          } else {
+            setState((s) => ({ ...s, status: "signed-out", error: "Auth setup failed" }))
+            return { kind: "error", message: "Could not create your account. Try again." }
+          }
+        } else {
+          authUserId = signUpData.user?.id ?? null
+        }
       }
 
-      // Step 2: Create profile row using the auth user's UUID
+      if (!authUserId) {
+        setState((s) => ({ ...s, status: "signed-out", error: "No Auth UID returned" }))
+        return { kind: "error", message: "Account setup failed. Please try again." }
+      }
+
+      // Step 3: Create profile row using the auth user's UUID
       const created = await createProfileFromOnboarding(
         eeid,
         displayName,
         orgId,
         storeId,
-        signUpData.user.id
+        authUserId
       )
       if (!created) {
         setState((s) => ({ ...s, status: "signed-out", error: "Could not create profile" }))
         return { kind: "error", message: "Auth created but profile setup failed. Contact your admin." }
       }
 
-      // Step 3: signUp may have already established a session; resolve it
+      // Step 4: Resolve session
       await resolveSessionState(created)
       return { kind: "success", profile: created, warning: null }
     },

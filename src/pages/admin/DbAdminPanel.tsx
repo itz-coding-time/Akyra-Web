@@ -570,7 +570,7 @@ export function DbAdminPanel() {
               <div className="space-y-3">
                 {/* All Stores shortcut */}
                 <button
-                  onClick={() => setView({ level: "stores", org: view.org, region: view.region, district: undefined as any })}
+                  onClick={() => setView({ level: "stores", org: view.org, region: view.region, district: {} as DistrictSummary } as AdminView)}
                   className="w-full bg-akyra-surface border border-white/10 rounded-xl p-4 flex items-center justify-between hover:border-white/30 transition-colors"
                 >
                   <div className="flex items-center gap-3">
@@ -589,7 +589,7 @@ export function DbAdminPanel() {
                 {districts.map(district => (
                   <button
                     key={district.id}
-                    onClick={() => setView({ level: "stores", org: view.org, district })}
+                    onClick={() => setView({ level: "stores", org: view.org, region: view.region, district } as AdminView)}
                     className="w-full bg-akyra-surface border border-akyra-border rounded-xl p-4 flex items-center justify-between hover:border-white/40 transition-colors"
                   >
                     <div className="flex items-center gap-3">
@@ -653,7 +653,7 @@ export function DbAdminPanel() {
                   <div
                     key={store.id}
                     className="w-full bg-akyra-surface border border-akyra-border rounded-xl p-4 flex items-center justify-between hover:border-white/40 transition-colors cursor-pointer"
-                    onClick={() => setView({ level: "profiles", org: view.org, store })}
+                    onClick={() => setView({ level: "profiles", org: view.org, region: view.region, district: view.district, store } as AdminView)}
                   >
                     <div className="flex items-center gap-3">
                       <Store className="w-5 h-5 text-akyra-secondary" />

@@ -48,6 +48,24 @@ function ProtectedRoute({ children, minRank = 1 }: { children: React.ReactNode; 
   return <>{children}</>
 }
 
+function PublicRoute({ children }: { children: React.ReactNode }) {
+  const { state } = useAuth()
+
+  if (state.status === "loading") {
+    return (
+      <div className="min-h-screen bg-akyra-black flex items-center justify-center">
+        <LoadingSpinner size="lg" />
+      </div>
+    )
+  }
+
+  if (state.status === "signed-in" || state.status === "signed-in-past-due") {
+    return <Navigate to="/app/dashboard" replace />
+  }
+
+  return <>{children}</>
+}
+
 function OAuthRedirectRecovery() {
   const navigate = useNavigate()
 
@@ -183,15 +201,36 @@ function App() {
       <OAuthRedirectRecovery />
       <Routes>
         {/* Public landing surface */}
-        <Route path="/" element={<LandingPage />} />
+        <Route
+          path="/"
+          element={
+            <PublicRoute>
+              <LandingPage />
+            </PublicRoute>
+          }
+        />
         <Route path="/about" element={<AboutPage />} />
         <Route path="/privacy" element={<PrivacyPage />} />
 
         {/* App surface */}
-        <Route path="/app/login" element={<LoginPage />} />
+        <Route
+          path="/app/login"
+          element={
+            <PublicRoute>
+              <LoginPage />
+            </PublicRoute>
+          }
+        />
         <Route path="/app/login/dbad" element={<DbAdminLoginPage />} />
         <Route path="/app/auth/callback" element={<AuthCallbackPage />} />
-        <Route path="/app/onboarding" element={<OnboardingPage />} />
+        <Route
+          path="/app/onboarding"
+          element={
+            <PublicRoute>
+              <OnboardingPage />
+            </PublicRoute>
+          }
+        />
         <Route
           path="/app/dashboard"
           element={
@@ -290,7 +329,7 @@ function App() {
         />
 
         {/* Legacy redirects */}
-        <Route path="/login" element={<Navigate to="/app/login" replace />} />
+        {/* <Route path="/login" element={<Navigate to="/app/login" replace />} /> */}
         <Route path="/dashboard/*" element={<Navigate to="/app/dashboard" replace />} />
         <Route path="/app" element={<Navigate to="/app/login" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />

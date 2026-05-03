@@ -1,12 +1,13 @@
 import { supabase } from '../supabase'
-import type { Database } from "../types/database.types"
-import type { PullEventSummary } from "../types/pullWorkflow.types"
-import type { StoreConfigAssociate, StoreConfigTask, StoreConfigInventoryItem, StoreConfigTableItem, StoreConfig } from "../types/storeConfig.types"
+import type { Database } from "../../types/database.types"
+import type { PullEventSummary } from "../../types/pullWorkflow.types"
+import type { StoreConfigAssociate, StoreConfigTask, StoreConfigInventoryItem, StoreConfigTableItem, StoreConfig } from "../../types/storeConfig.types"
 import {
   startRegistration,
   startAuthentication,
   browserSupportsWebAuthn,
 } from "@simplewebauthn/browser"
+import { fetchProfileByEeid, fetchProfileByEeidAndOrg } from "./profiles"
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"]
 type ActiveShift = Database["public"]["Tables"]["active_shifts"]["Row"]
@@ -188,34 +189,42 @@ export async function registerAuthForProfile(
   const syntheticEmail = buildSyntheticEmail(eeid, welcomePhrase)
   console.log("registerAuthForProfile: using email schema", syntheticEmail)
 
-  // Attempt signup
-  const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+  let authUid: string | null = null
+
+  // Try sign in first (recovery path)
+  const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
     email: syntheticEmail,
     password: pin,
   })
 
-  let authUid: string | null = null
+  if (!signInError && signInData.user) {
+    authUid = signInData.user.id
+  } else {
+    // Attempt signup
+    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+      email: syntheticEmail,
+      password: pin,
+    })
 
-  if (signUpError) {
-    if (signUpError.message.includes("already registered")) {
-      // User exists â€” try signing in with same PIN to link
-      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-        email: syntheticEmail,
-        password: pin,
-      })
-
-      if (signInError || !signInData.user) {
-        console.error("registerAuthForProfile: user exists but PIN mismatch")
+    if (signUpError) {
+      if (signUpError.message.includes("already registered")) {
+        // User exists but wrong password? Or just race condition
+        const { data: retrySignInData, error: retrySignInError } = await supabase.auth.signInWithPassword({
+          email: syntheticEmail,
+          password: pin,
+        })
+        if (retrySignInError || !retrySignInData.user) {
+          console.error("registerAuthForProfile: user exists but PIN mismatch or retry failed")
+          return null
+        }
+        authUid = retrySignInData.user.id
+      } else {
+        console.error("registerAuthForProfile signUp failed:", signUpError.message)
         return null
       }
-
-      authUid = signInData.user.id
     } else {
-      console.error("registerAuthForProfile signUp failed:", signUpError.message)
-      return null
+      authUid = signUpData.user?.id ?? null
     }
-  } else {
-    authUid = signUpData.user?.id ?? null
   }
 
   if (!authUid) {
@@ -285,31 +294,41 @@ export async function registerAuthForOrg(
   const syntheticEmail = buildSyntheticEmail(eeid, welcomePhrase)
   console.log("[Auth] Registering:", syntheticEmail)
 
-  const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+  let authUid: string | null = null
+
+  // Try sign in first (recovery path)
+  const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
     email: syntheticEmail,
     password,
   })
 
-  let authUid: string | null = null
-
-  if (signUpError) {
-    if (signUpError.message.includes("already registered")) {
-      // Try signing in â€” previous incomplete registration
-      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-        email: syntheticEmail,
-        password,
-      })
-      if (signInError || !signInData.user) {
-        console.error("[Auth] Already registered but wrong password")
-        return { profile: null, error: "SYNC_ERROR: EEID_ALREADY_LINKED" }
-      }
-      authUid = signInData.user.id
-    } else {
-      console.error("[Auth] Registration failed:", signUpError.message)
-      return { profile: null, error: `SYNC_ERROR: AUTH_FAILED (${signUpError.message})` }
-    }
+  if (!signInError && signInData.user) {
+    authUid = signInData.user.id
   } else {
-    authUid = signUpData.user?.id ?? null
+    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+      email: syntheticEmail,
+      password,
+    })
+
+    if (signUpError) {
+      if (signUpError.message.includes("already registered")) {
+        // Try signing in again — race condition or already linked
+        const { data: retrySignInData, error: retrySignInError } = await supabase.auth.signInWithPassword({
+          email: syntheticEmail,
+          password,
+        })
+        if (retrySignInError || !retrySignInData.user) {
+          console.error("[Auth] Already registered but wrong password")
+          return { profile: null, error: "SYNC_ERROR: EEID_ALREADY_LINKED" }
+        }
+        authUid = retrySignInData.user.id
+      } else {
+        console.error("[Auth] Registration failed:", signUpError.message)
+        return { profile: null, error: `SYNC_ERROR: AUTH_FAILED (${signUpError.message})` }
+      }
+    } else {
+      authUid = signUpData.user?.id ?? null
+    }
   }
 
   if (!authUid) return { profile: null, error: "SYNC_ERROR: NO_AUTH_UID" }
@@ -336,4 +355,8 @@ export async function registerAuthForOrg(
   const finalProfile = await fetchProfileByEeidAndOrg(eeid, welcomePhrase)
   return { profile: finalProfile, error: finalProfile ? undefined : "SYNC_ERROR: FINAL_FETCH_FAILED" }
 }
+
+
+
+
 
