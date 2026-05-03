@@ -1,5 +1,5 @@
 {
-  "version": "1.1.4",
+  "version": "1.1.5",
   "released": "2026-05-03",
-  "notes": "Implemented Promise-based Mutex for OAuth redirection to eliminate Supabase Auth lock contention."
+  "notes": "Enabled native Supabase session detection (detectSessionInUrl: true) to eliminate lock contention during OAuth redirects."
 }
