@@ -103,6 +103,27 @@ export async function assignRegionalAdmin(
   return true
 }
 
+export async function deleteRegion(regionId: string): Promise<boolean> {
+  const db = supabase as any
+  const { data: districts } = await db
+    .from("districts")
+    .select("id")
+    .eq("region_id", regionId)
+    .limit(1)
+
+  if (districts && districts.length > 0) {
+    console.error("deleteRegion failed: Region still contains districts.")
+    return false
+  }
+
+  const { error } = await db.from("regions").delete().eq("id", regionId)
+  if (error) {
+    console.error("deleteRegion failed:", error.message)
+    return false
+  }
+  return true
+}
+
 export async function fetchRegionalMetrics(
   regionId: string
 ): Promise<{

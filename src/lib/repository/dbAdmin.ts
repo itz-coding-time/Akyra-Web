@@ -125,6 +125,17 @@ export async function fetchProfilesForStore(storeId: string): Promise<Profile[]>
   return data ?? []
 }
 
+export async function fetchProfilesForOrg(orgId: string): Promise<Profile[]> {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("*, current_store_id!inner(org_id)")
+    .eq("current_store_id.org_id", orgId)
+    .order("display_name")
+
+  if (error) return []
+  return data ?? []
+}
+
 export async function updateProfileRole(
   profileId: string,
   role: string,

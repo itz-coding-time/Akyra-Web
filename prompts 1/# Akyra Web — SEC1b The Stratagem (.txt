@@ -1,0 +1,959 @@
+# Akyra Web — SEC1b: The Stratagem (Respawn Protocol Reskin)
+
+Do only what is described. Nothing else.
+
+**Context:** SEC1 built the Respawn Protocol — a zero-trust physical presence account recovery flow. This stage reskins the UI with Helldivers-inspired Stratagem framing. The mechanics are identical. Only the presentation changes.
+
+**What changes:**
+- PIN display → Stratagem arrow sequence (↑ ↓ ← →)
+- "Enter PIN" → "Enter Stratagem"
+- "Respawn Protocol" → "Reinforcement Request"
+- "Respawning..." → "REINFORCING!"
+- "Get back out there, Legend." → "Welcome back. Time to be a Legend."
+- If profile lookup fails from PIN → show roster picker so supervisor can manually identify the associate
+- Associate waiting screen → "STANDBY." before password reset
+
+**What does NOT change:**
+- `respawn_pins` table — unchanged
+- Supabase Realtime channel — unchanged
+- WebAuthn biometric flow — unchanged
+- Security model — unchanged
+- TTL, single-use, device fingerprint — unchanged
+
+**Prerequisites:** SEC1 complete. All RBAC prompts complete.
+
+---
+
+## Before touching anything:
+
+1. Read `src/pages/RespawnRequestScreen.tsx` in full
+2. Read `src/components/RespawnAuthorizationPanel.tsx` in full
+3. Read `src/lib/repository.ts` — find `requestRespawnPin`, `lookupRespawnPin`, `authorizeRespawn`
+
+---
+
+## Change 1 of 4 — Add stratagem encoding to repository.ts
+
+Add to `src/lib/repository.ts`:
+
+```typescript
+// ── Stratagem Encoding ────────────────────────────────────────────────────
+
+const STRATAGEM_ARROWS = ["↑", "↓", "←", "→"] as const
+type Arrow = typeof STRATAGEM_ARROWS[number]
+
+/**
+ * Convert a 4-digit PIN to a stratagem arrow sequence.
+ * Each digit 0-3 maps to ↑ ↓ ← →
+ * PIN is generated as 4 random digits 0-3.
+ */
+export function generateStratagem(): { arrows: Arrow[]; pin: string } {
+  const arrows = Array.from({ length: 4 }, () =>
+    STRATAGEM_ARROWS[Math.floor(Math.random() * 4)]
+  ) as Arrow[]
+  const pin = arrows.map(a => STRATAGEM_ARROWS.indexOf(a).toString()).join("")
+  return { arrows, pin }
+}
+
+/**
+ * Convert a PIN string back to arrows for display.
+ */
+export function pinToArrows(pin: string): Arrow[] {
+  return pin.split("").map(d => STRATAGEM_ARROWS[parseInt(d)] ?? "↑") as Arrow[]
+}
+
+/**
+ * Convert arrow sequence to PIN for lookup.
+ */
+export function arrowsToPin(arrows: Arrow[]): string {
+  return arrows.map(a => STRATAGEM_ARROWS.indexOf(a).toString()).join("")
+}
+```
+
+Update `requestRespawnPin` to use the new 4-arrow stratagem instead of 6-digit random PIN:
+
+```typescript
+export async function requestRespawnPin(
+  eeid: string,
+  welcomePhrase: string
+): Promise<{
+  pin: string
+  arrows: string[]
+  channel: string
+  expiresAt: string
+} | null> {
+  const org = await validateWelcomeCode(welcomePhrase)
+  if (!org) return null
+
+  const profile = await fetchProfileByEeidAndOrg(eeid, welcomePhrase)
+  if (!profile) return null
+
+  if ((profile.role_rank ?? 0) > 3) return null
+
+  // Generate stratagem instead of random 6-digit PIN
+  const { arrows, pin } = generateStratagem()
+  const pinHash = hashPin(pin)
+  const channel = `respawn-${pinHash}-${Date.now()}`
+  const expiresAt = new Date(Date.now() + RESPAWN_PIN_TTL_SECONDS * 1000).toISOString()
+  const fingerprint = generateDeviceFingerprint()
+
+  const storeId = profile.current_store_id
+  if (!storeId) return null
+
+  const { error } = await supabase
+    .from("respawn_pins")
+    .insert({
+      store_id: storeId,
+      associate_eeid: eeid,
+      associate_org_id: org.orgId,
+      pin_hash: pinHash,
+      pin_channel: channel,
+      expires_at: expiresAt,
+      device_fingerprint: fingerprint,
+    })
+
+  if (error) return null
+
+  return { pin, arrows, channel, expiresAt }
+}
+```
+
+---
+
+## Change 2 of 4 — Rewrite RespawnRequestScreen with Stratagem UI
+
+Replace `src/pages/RespawnRequestScreen.tsx` entirely:
+
+```tsx
+import { useEffect, useState, useRef } from "react"
+import { useNavigate } from "react-router-dom"
+import { supabase } from "../lib/supabase"
+import {
+  requestRespawnPin,
+  completeRespawn,
+  registerPasskey,
+  getCachedWelcomeCode,
+} from "../lib"
+import { AkyraLogo } from "../components/AkyraLogo"
+import { LoadingSpinner } from "../components/LoadingSpinner"
+
+interface RespawnRequestScreenProps {
+  eeid: string
+  onBack: () => void
+}
+
+type RespawnPhase =
+  | "generating"
+  | "waiting"
+  | "standby"
+  | "set-password"
+  | "verified"
+  | "reinforcing"
+  | "welcome"
+  | "expired"
+  | "error"
+
+const ARROW_CLASSES: Record<string, string> = {
+  "↑": "text-white",
+  "↓": "text-white",
+  "←": "text-white",
+  "→": "text-white",
+}
+
+export function RespawnRequestScreen({ eeid, onBack }: RespawnRequestScreenProps) {
+  const navigate = useNavigate()
+  const [phase, setPhase] = useState<RespawnPhase>("generating")
+  const [arrows, setArrows] = useState<string[]>([])
+  const [pin, setPin] = useState("")
+  const [channel, setChannel] = useState("")
+  const [expiresAt, setExpiresAt] = useState<Date | null>(null)
+  const [timeLeft, setTimeLeft] = useState(300)
+  const [newPassword, setNewPassword] = useState("")
+  const [confirmPassword, setConfirmPassword] = useState("")
+  const [error, setError] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [glowIntensity, setGlowIntensity] = useState(0)
+  const channelRef = useRef<any>(null)
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const glowRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const welcomePhrase = getCachedWelcomeCode() ?? ""
+  const firstName = eeid // fallback — will be replaced by profile name if available
+
+  useEffect(() => {
+    async function generate() {
+      const result = await requestRespawnPin(eeid, welcomePhrase)
+      if (!result) {
+        setPhase("error")
+        return
+      }
+      setArrows(result.arrows)
+      setPin(result.pin)
+      setChannel(result.channel)
+      setExpiresAt(new Date(result.expiresAt))
+      setPhase("waiting")
+    }
+    generate()
+  }, [eeid, welcomePhrase])
+
+  // Countdown timer
+  useEffect(() => {
+    if (phase !== "waiting") return
+
+    timerRef.current = setInterval(() => {
+      setTimeLeft(prev => {
+        if (prev <= 1) {
+          clearInterval(timerRef.current!)
+          setPhase("expired")
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+
+    return () => { if (timerRef.current) clearInterval(timerRef.current) }
+  }, [phase])
+
+  // Realtime — listen for supervisor authorization
+  useEffect(() => {
+    if (!channel || phase !== "waiting") return
+
+    channelRef.current = supabase
+      .channel(channel)
+      .on("broadcast", { event: "authorized" }, () => {
+        if (timerRef.current) clearInterval(timerRef.current)
+        setPhase("standby")
+        setTimeout(() => setPhase("set-password"), 1200)
+      })
+      .subscribe()
+
+    return () => {
+      if (channelRef.current) supabase.removeChannel(channelRef.current)
+    }
+  }, [channel, phase])
+
+  // Reinforcing glow animation
+  useEffect(() => {
+    if (phase !== "reinforcing") return
+
+    let intensity = 0
+    glowRef.current = setInterval(() => {
+      intensity = Math.min(intensity + 0.04, 1)
+      setGlowIntensity(intensity)
+      if (intensity >= 1) {
+        clearInterval(glowRef.current!)
+        setTimeout(() => setPhase("welcome"), 800)
+      }
+    }, 40)
+
+    return () => { if (glowRef.current) clearInterval(glowRef.current) }
+  }, [phase])
+
+  async function handleSetPassword() {
+    if (newPassword.length < 8 || newPassword !== confirmPassword) return
+    setIsLoading(true)
+    setPhase("verified")
+    await new Promise(r => setTimeout(r, 1000))
+    setPhase("reinforcing")
+    const success = await completeRespawn(eeid, welcomePhrase, newPassword, channel)
+    if (!success) {
+      setError("Something went wrong. Please try again.")
+      setPhase("set-password")
+    }
+    try { await registerPasskey(eeid) } catch {}
+    setIsLoading(false)
+  }
+
+  const formatTime = (s: number) =>
+    `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`
+
+  const timerPct = (timeLeft / 300) * 100
+  const isLow = timeLeft < 60
+
+  return (
+    <div
+      className="fixed inset-0 flex flex-col items-center justify-center px-6"
+      style={{
+        background: phase === "reinforcing" || phase === "welcome"
+          ? `rgb(0, ${Math.round(glowIntensity * 35)}, 0)`
+          : "black",
+        transition: "background 0.3s ease",
+      }}
+    >
+      {/* Ambient */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden">
+        {phase === "reinforcing" || phase === "welcome" ? (
+          <div
+            className="absolute inset-0 blur-[200px] rounded-full"
+            style={{ background: `rgba(0, 255, 80, ${glowIntensity * 0.12})` }}
+          />
+        ) : (
+          <div className="absolute -top-[10%] left-[20%] w-[60%] h-[40%] bg-white/[0.01] blur-[150px] rounded-full" />
+        )}
+      </div>
+
+      <div className="relative z-10 w-full max-w-sm">
+
+        {/* ── GENERATING ── */}
+        {phase === "generating" && (
+          <div className="flex flex-col items-center gap-4 text-center">
+            <AkyraLogo className="w-8 h-8 opacity-30 animate-pulse" />
+            <LoadingSpinner size="md" />
+            <p className="text-white/20 text-xs font-mono uppercase tracking-widest">
+              Generating Stratagem...
+            </p>
+          </div>
+        )}
+
+        {/* ── WAITING — Show Stratagem ── */}
+        {phase === "waiting" && (
+          <div className="space-y-10 text-center">
+            <div className="space-y-1">
+              <p className="text-[9px] font-mono uppercase tracking-[0.5em] text-white/20">
+                Reinforcement Request
+              </p>
+              <p className="text-sm text-white/40">
+                Show your supervisor this Stratagem.
+              </p>
+            </div>
+
+            {/* Stratagem arrows */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-center gap-4">
+                {arrows.map((arrow, i) => (
+                  <div
+                    key={i}
+                    className="w-14 h-14 rounded-xl bg-white/[0.05] border border-white/20 flex items-center justify-center"
+                  >
+                    <span className="text-3xl text-white select-none">{arrow}</span>
+                  </div>
+                ))}
+              </div>
+              <p className="text-[9px] font-mono text-white/20 uppercase tracking-widest">
+                Your Stratagem
+              </p>
+            </div>
+
+            {/* Timer */}
+            <div className="space-y-2">
+              <div className="h-0.5 bg-white/10 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-1000 ${
+                    isLow ? "bg-[#E63946]" : "bg-white/30"
+                  }`}
+                  style={{ width: `${timerPct}%` }}
+                />
+              </div>
+              <p className={`text-xs font-mono ${isLow ? "text-[#E63946]" : "text-white/20"}`}>
+                Expires in {formatTime(timeLeft)}
+              </p>
+            </div>
+
+            <button
+              onClick={onBack}
+              className="text-[10px] font-mono text-white/15 hover:text-white/30 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+
+        {/* ── STANDBY ── */}
+        {phase === "standby" && (
+          <div className="text-center space-y-6">
+            <AkyraLogo className="w-8 h-8 mx-auto opacity-30" />
+            <div>
+              <p className="text-[9px] font-mono uppercase tracking-[0.5em] text-white/20 mb-3">
+                Stratagem Confirmed
+              </p>
+              <p className="text-3xl font-black text-white animate-pulse">
+                STANDBY.
+              </p>
+            </div>
+            <LoadingSpinner size="md" />
+          </div>
+        )}
+
+        {/* ── SET PASSWORD ── */}
+        {phase === "set-password" && (
+          <div className="space-y-6">
+            <div className="text-center space-y-1">
+              <p className="text-[9px] font-mono uppercase tracking-[0.5em] text-white/20">
+                Identity Confirmed
+              </p>
+              <h2 className="text-2xl font-black text-white">
+                Reset your password.
+              </h2>
+              <p className="text-sm text-white/40">
+                Make it something you won't forget.
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <input
+                type="password"
+                placeholder="New password (min 8 chars)"
+                value={newPassword}
+                onChange={e => setNewPassword(e.target.value)}
+                autoFocus
+                className="w-full bg-white/[0.05] border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-white"
+              />
+              <input
+                type="password"
+                placeholder="Confirm password"
+                value={confirmPassword}
+                onChange={e => setConfirmPassword(e.target.value)}
+                className="w-full bg-white/[0.05] border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-white"
+              />
+            </div>
+
+            {error && <p className="text-[#E63946] text-sm font-mono text-center">{error}</p>}
+            {newPassword.length > 0 && newPassword.length < 8 && (
+              <p className="text-white/20 text-xs font-mono text-center">
+                At least 8 characters
+              </p>
+            )}
+            {newPassword.length >= 8 && newPassword !== confirmPassword && (
+              <p className="text-[#E63946] text-xs font-mono text-center">
+                Passwords don't match
+              </p>
+            )}
+
+            <button
+              onClick={handleSetPassword}
+              disabled={newPassword.length < 8 || newPassword !== confirmPassword || isLoading}
+              className="w-full py-4 rounded-2xl bg-white text-black font-black disabled:opacity-30 flex items-center justify-center gap-2"
+            >
+              {isLoading ? <><LoadingSpinner size="sm" /> One moment...</> : "Confirm →"}
+            </button>
+          </div>
+        )}
+
+        {/* ── VERIFIED ── */}
+        {phase === "verified" && (
+          <div className="text-center space-y-6">
+            <p className="text-[9px] font-mono uppercase tracking-[0.5em] text-white/20">
+              Password Set
+            </p>
+            <p className="text-2xl font-black text-white animate-pulse">
+              Verified. One moment...
+            </p>
+            <LoadingSpinner size="md" />
+          </div>
+        )}
+
+        {/* ── REINFORCING ── */}
+        {phase === "reinforcing" && (
+          <div className="text-center space-y-6">
+            <AkyraLogo
+              className="w-12 h-12 mx-auto"
+              style={{ opacity: glowIntensity }}
+            />
+            <p
+              className="text-4xl font-black tracking-tight"
+              style={{
+                color: `rgba(${Math.round(glowIntensity * 200)}, 255, ${Math.round(glowIntensity * 80)}, 1)`,
+              }}
+            >
+              REINFORCING!
+            </p>
+            <p className="text-xs font-mono text-white/20 animate-pulse">
+              Syncing credentials · Linking profile · Restoring access
+            </p>
+          </div>
+        )}
+
+        {/* ── WELCOME BACK ── */}
+        {phase === "welcome" && (
+          <div className="text-center space-y-8">
+            <AkyraLogo className="w-12 h-12 mx-auto" />
+            <div className="space-y-2">
+              <p className="text-4xl font-black text-white">
+                Welcome back.
+              </p>
+              <p className="text-lg font-mono text-green-400/80">
+                Time to be a Legend. 🎮
+              </p>
+            </div>
+            <button
+              onClick={() => navigate("/app/dashboard")}
+              className="w-full py-4 rounded-2xl bg-white text-black font-black text-lg active:scale-[0.98] transition-transform"
+            >
+              Back on the floor →
+            </button>
+          </div>
+        )}
+
+        {/* ── EXPIRED ── */}
+        {phase === "expired" && (
+          <div className="text-center space-y-6">
+            <p className="text-[#E63946] font-bold">Stratagem Expired</p>
+            <p className="text-sm text-white/40">
+              The stratagem timed out before your supervisor could enter it.
+            </p>
+            <button
+              onClick={() => {
+                setPhase("generating")
+                setTimeLeft(300)
+                setArrows([])
+                setPin("")
+              }}
+              className="w-full py-4 rounded-2xl bg-white text-black font-black"
+            >
+              Generate New Stratagem
+            </button>
+            <button
+              onClick={onBack}
+              className="text-[10px] font-mono text-white/15 hover:text-white/30 transition-colors"
+            >
+              ← Back to login
+            </button>
+          </div>
+        )}
+
+        {/* ── ERROR ── */}
+        {phase === "error" && (
+          <div className="text-center space-y-4">
+            <p className="text-[#E63946] font-bold">Reinforcement Unavailable</p>
+            <p className="text-sm text-white/40">
+              Account not found. Check your EEID and Welcome Code, or contact your supervisor.
+            </p>
+            <button
+              onClick={onBack}
+              className="text-[10px] font-mono text-white/15 hover:text-white/30 transition-colors"
+            >
+              ← Back
+            </button>
+          </div>
+        )}
+
+      </div>
+    </div>
+  )
+}
+```
+
+---
+
+## Change 3 of 4 — Rewrite RespawnAuthorizationPanel with Stratagem UI
+
+Replace `src/components/RespawnAuthorizationPanel.tsx` entirely:
+
+```tsx
+import { useState } from "react"
+import { Shield, X } from "lucide-react"
+import {
+  lookupRespawnPin,
+  authorizeRespawn,
+  arrowsToPin,
+  fetchAssociatesForStore,
+} from "../lib"
+import { LoadingSpinner } from "./LoadingSpinner"
+
+interface RespawnAuthorizationPanelProps {
+  supervisorAssociateId: string
+  storeId: string
+  onDismiss: () => void
+}
+
+type AuthPhase =
+  | "enter-stratagem"
+  | "confirm-identity"
+  | "roster-picker"    // fallback if profile not found
+  | "confirm-you"
+  | "reinforcing"
+  | "done"
+  | "error"
+
+const ARROWS = ["↑", "↓", "←", "→"] as const
+type Arrow = typeof ARROWS[number]
+
+export function RespawnAuthorizationPanel({
+  supervisorAssociateId,
+  storeId,
+  onDismiss,
+}: RespawnAuthorizationPanelProps) {
+  const [phase, setPhase] = useState<AuthPhase>("enter-stratagem")
+  const [enteredArrows, setEnteredArrows] = useState<Arrow[]>([])
+  const [associateInfo, setAssociateInfo] = useState<any>(null)
+  const [rosterAssociates, setRosterAssociates] = useState<any[]>([])
+  const [selectedAssociate, setSelectedAssociate] = useState<any>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  function handleArrowTap(arrow: Arrow) {
+    if (enteredArrows.length >= 4) return
+    setEnteredArrows(prev => [...prev, arrow])
+  }
+
+  function handleClear() {
+    setEnteredArrows([])
+    setError(null)
+  }
+
+  async function handleLookup() {
+    if (enteredArrows.length !== 4) return
+    setIsLoading(true)
+    setError(null)
+
+    const pin = arrowsToPin(enteredArrows)
+    const result = await lookupRespawnPin(pin)
+    setIsLoading(false)
+
+    if (!result) {
+      setError("Stratagem not recognized or expired. Ask them to generate a new one.")
+      setEnteredArrows([])
+      return
+    }
+
+    setAssociateInfo(result)
+    setPhase("confirm-identity")
+  }
+
+  async function handleLoadRoster() {
+    setIsLoading(true)
+    const associates = await fetchAssociatesForStore(storeId)
+    setRosterAssociates(associates)
+    setIsLoading(false)
+    setPhase("roster-picker")
+  }
+
+  async function handleAuthorize() {
+    setPhase("confirm-you")
+  }
+
+  async function handleBiometricConfirm() {
+    setIsLoading(true)
+
+    const pin = arrowsToPin(enteredArrows)
+    const success = await authorizeRespawn(pin, supervisorAssociateId)
+
+    setIsLoading(false)
+
+    if (success) {
+      setPhase("reinforcing")
+      setTimeout(() => setPhase("done"), 2000)
+    } else {
+      setError("Authorization failed. The stratagem may have expired.")
+      setPhase("error")
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center">
+      <div className="absolute inset-0 bg-black/80" onClick={onDismiss} />
+      <div className="relative w-full max-w-lg bg-[#0a0a0a] border-t border-white/10 rounded-t-2xl p-6 space-y-5">
+
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Shield className="w-4 h-4 text-white/40" />
+            <p className="font-bold text-white text-sm">
+              {phase === "enter-stratagem" && "Reinforcement Incoming"}
+              {phase === "confirm-identity" && "Who Needs Reinforcement?"}
+              {phase === "roster-picker" && "Select Associate"}
+              {phase === "confirm-you" && "Confirm You Are You"}
+              {phase === "reinforcing" && "Reinforcing"}
+              {phase === "done" && "Reinforcement Complete"}
+              {phase === "error" && "Authorization Failed"}
+            </p>
+          </div>
+          <button onClick={onDismiss} className="text-white/20 hover:text-white transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* ── ENTER STRATAGEM ── */}
+        {phase === "enter-stratagem" && (
+          <div className="space-y-5">
+            <p className="text-sm text-white/40">
+              One associate needs to be called back in. Enter their Stratagem.
+            </p>
+
+            {/* Arrow display */}
+            <div className="flex items-center justify-center gap-3">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div
+                  key={i}
+                  className={`w-12 h-12 rounded-xl flex items-center justify-center border transition-all ${
+                    enteredArrows[i]
+                      ? "border-white/40 bg-white/10"
+                      : "border-white/10 bg-white/[0.03]"
+                  }`}
+                >
+                  <span className="text-2xl text-white">
+                    {enteredArrows[i] ?? ""}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {/* Arrow buttons */}
+            <div className="grid grid-cols-4 gap-2">
+              {ARROWS.map(arrow => (
+                <button
+                  key={arrow}
+                  onClick={() => handleArrowTap(arrow)}
+                  disabled={enteredArrows.length >= 4}
+                  className="h-12 rounded-xl border border-white/20 bg-white/[0.04] text-white text-xl font-bold hover:bg-white/10 hover:border-white/40 transition-all disabled:opacity-30 active:scale-95"
+                >
+                  {arrow}
+                </button>
+              ))}
+            </div>
+
+            {error && (
+              <p className="text-[#E63946] text-xs font-mono text-center">{error}</p>
+            )}
+
+            <div className="flex gap-2">
+              <button
+                onClick={handleClear}
+                className="flex-1 py-2.5 rounded-xl border border-white/10 text-white/40 text-sm"
+              >
+                Clear
+              </button>
+              <button
+                onClick={handleLookup}
+                disabled={enteredArrows.length !== 4 || isLoading}
+                className="flex-1 py-2.5 rounded-xl bg-white text-black font-bold text-sm disabled:opacity-30 flex items-center justify-center gap-2"
+              >
+                {isLoading ? <><LoadingSpinner size="sm" /> Looking up...</> : "Confirm →"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── CONFIRM IDENTITY ── */}
+        {phase === "confirm-identity" && associateInfo && (
+          <div className="space-y-4">
+            <p className="text-sm text-white/40">
+              Is this the person standing in front of you?
+            </p>
+
+            <div className="bg-white/[0.04] border border-white/15 rounded-2xl p-5 text-center space-y-1">
+              <p className="text-2xl font-black text-white">{associateInfo.associateName}</p>
+              <p className="text-sm font-mono text-white/30">
+                EEID {associateInfo.associateEeid} · {associateInfo.associateRole}
+              </p>
+            </div>
+
+            <p className="text-[10px] font-mono text-white/20 text-center">
+              Make sure this person is physically standing in front of you.
+            </p>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setPhase("enter-stratagem")
+                  setEnteredArrows([])
+                }}
+                className="flex-1 py-2.5 rounded-xl border border-white/10 text-white/40 text-sm"
+              >
+                Wrong person
+              </button>
+              <button
+                onClick={handleAuthorize}
+                className="flex-1 py-2.5 rounded-xl bg-white text-black font-bold text-sm"
+              >
+                That's them →
+              </button>
+            </div>
+
+            <button
+              onClick={handleLoadRoster}
+              disabled={isLoading}
+              className="w-full text-[10px] font-mono text-white/15 hover:text-white/30 transition-colors"
+            >
+              Can't find their account? Pick from roster →
+            </button>
+          </div>
+        )}
+
+        {/* ── ROSTER PICKER (fallback) ── */}
+        {phase === "roster-picker" && (
+          <div className="space-y-3">
+            <p className="text-sm text-white/40">
+              Select the associate standing in front of you.
+            </p>
+
+            <div className="max-h-48 overflow-y-auto space-y-1.5">
+              {rosterAssociates.map(a => (
+                <button
+                  key={a.id}
+                  onClick={() => setSelectedAssociate(a)}
+                  className={`w-full text-left px-4 py-3 rounded-xl border transition-all flex items-center justify-between ${
+                    selectedAssociate?.id === a.id
+                      ? "border-white/40 bg-white/10 text-white"
+                      : "border-white/10 text-white/40 hover:text-white hover:border-white/20"
+                  }`}
+                >
+                  <span className="text-sm font-semibold">{a.name}</span>
+                  <span className="text-[10px] font-mono opacity-50">{a.role}</span>
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={() => {
+                if (selectedAssociate) {
+                  setAssociateInfo({
+                    associateName: selectedAssociate.name,
+                    associateEeid: selectedAssociate.eeid ?? "—",
+                    associateRole: selectedAssociate.role,
+                  })
+                  setPhase("confirm-you")
+                }
+              }}
+              disabled={!selectedAssociate}
+              className="w-full py-3 rounded-xl bg-white text-black font-bold text-sm disabled:opacity-30"
+            >
+              Confirm Selection →
+            </button>
+          </div>
+        )}
+
+        {/* ── CONFIRM YOU ARE YOU ── */}
+        {phase === "confirm-you" && (
+          <div className="space-y-5 text-center">
+            <div className="space-y-1">
+              <p className="text-sm text-white/40">
+                Your biometric is required to authorize this reinforcement.
+              </p>
+              {associateInfo && (
+                <p className="text-[10px] font-mono text-white/20">
+                  Reinforcing: {associateInfo.associateName}
+                </p>
+              )}
+            </div>
+
+            <div className="w-16 h-16 rounded-full bg-white/[0.05] border border-white/15 flex items-center justify-center mx-auto">
+              <Shield className="w-7 h-7 text-white/40" />
+            </div>
+
+            {error && <p className="text-[#E63946] text-sm font-mono">{error}</p>}
+
+            <button
+              onClick={handleBiometricConfirm}
+              disabled={isLoading}
+              className="w-full py-4 rounded-2xl bg-white text-black font-black text-lg disabled:opacity-30 flex items-center justify-center gap-2"
+            >
+              {isLoading
+                ? <><LoadingSpinner size="sm" /> Confirming...</>
+                : <><Shield className="w-5 h-5" /> Authenticate</>
+              }
+            </button>
+          </div>
+        )}
+
+        {/* ── REINFORCING ── */}
+        {phase === "reinforcing" && (
+          <div className="flex flex-col items-center gap-4 py-6 text-center">
+            <LoadingSpinner size="md" />
+            <div>
+              <p className="text-white font-black text-xl animate-pulse">REINFORCING!</p>
+              <p className="text-xs font-mono text-white/30 mt-1">
+                Authorization sent. Standby for drop.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* ── DONE ── */}
+        {phase === "done" && (
+          <div className="text-center space-y-4 py-4">
+            <p className="text-2xl text-green-400">✓</p>
+            <p className="text-white font-bold">Reinforcement authorized.</p>
+            <p className="text-sm text-white/40">
+              They're resetting their credentials now.
+            </p>
+            <button
+              onClick={onDismiss}
+              className="w-full py-3 rounded-xl border border-white/15 text-white text-sm"
+            >
+              Done
+            </button>
+          </div>
+        )}
+
+        {/* ── ERROR ── */}
+        {phase === "error" && (
+          <div className="text-center space-y-4 py-4">
+            <p className="text-[#E63946] font-bold">Authorization Failed</p>
+            <p className="text-sm text-white/40">{error}</p>
+            <button
+              onClick={() => { setPhase("enter-stratagem"); setEnteredArrows([]) }}
+              className="w-full py-3 rounded-xl border border-white/15 text-white text-sm"
+            >
+              Try Again
+            </button>
+          </div>
+        )}
+
+      </div>
+    </div>
+  )
+}
+```
+
+---
+
+## Change 4 of 4 — Update OverviewPage Respawn button label
+
+In `src/pages/dashboard/OverviewPage.tsx`, update the Respawn button label:
+
+```tsx
+// Replace:
+<Shield className="w-3.5 h-3.5" />
+Respawn
+
+// With:
+<Shield className="w-3.5 h-3.5" />
+Reinforce
+```
+
+---
+
+## Verify
+
+Run:
+
+```bash
+npm run build
+```
+
+**Test Stratagem flow — two devices:**
+
+**Device 1 (associate — locked out):**
+1. Login → password step → "I can't get in"
+2. "Generating Stratagem..." → 4 arrow sequence appears
+3. e.g. `↑ ← → ↓` with countdown
+
+**Device 2 (supervisor):**
+1. Overview → "Reinforce" button
+2. Panel opens: "Enter their Stratagem"
+3. Four directional buttons: tap ↑ ← → ↓ in sequence
+4. Boxes fill as tapped
+5. "Confirm →" → "Who Needs Reinforcement?" shows associate name
+6. "That's them →" → biometric → "REINFORCING!"
+
+**Device 1:**
+7. "STANDBY." → "Reset your password." 
+8. Enter new password → "Verified. One moment..." → green glow → "REINFORCING!"
+9. "Welcome back. Time to be a Legend. 🎮"
+
+**Test roster picker:**
+1. Supervisor enters correct stratagem but taps "Can't find their account?"
+2. Roster appears — tap the associate standing in front of you
+3. Proceeds to biometric confirmation
+
+**Test wrong stratagem:**
+1. Supervisor enters wrong arrow sequence
+2. "Stratagem not recognized or expired" error
+3. Boxes clear, can try again
+
+**Test expired:**
+1. Associate generates stratagem, waits 5 minutes
+2. "Stratagem Expired" screen with "Generate New Stratagem" button
+
+Build must pass with zero TypeScript errors before you stop.

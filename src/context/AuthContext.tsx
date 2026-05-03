@@ -123,7 +123,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        if (event === "SIGNED_OUT" || event === "TOKEN_REFRESHED" && !session) {
+        if (event === "SIGNED_IN" && session?.user) {
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("*")
+            .eq("auth_uid", session.user.id)
+            .maybeSingle()
+          if (profile) await resolveSessionState(profile)
+        } else if (event === "SIGNED_OUT" || (event === "TOKEN_REFRESHED" && !session)) {
           setState({ status: "signed-out", profile: null, licenseWarning: null, error: null })
         } else if (!session?.user) {
           setState({ status: "signed-out", profile: null, licenseWarning: null, error: null })

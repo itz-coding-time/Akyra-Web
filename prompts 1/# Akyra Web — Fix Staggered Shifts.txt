@@ -1,0 +1,326 @@
+# Akyra Web — Fix: Staggered Shifts
+
+Do only what is described. Nothing else.
+
+**Context:** The current system assumes clean shift buckets (6a-2p, 2p-10p, 10p-6a) with flat 10-hour Ghost Protocol TTLs. Real operations are staggered — a supervisor might work 9pm-7:30am, an associate 10p-6:30a, another 12a-6a. This fix makes Ghost Protocol TTL respect each associate's actual scheduled end time, and ensures shift bucket is assigned at station claim from the schedule entry rather than assumed from clock-in time.
+
+**What changes:**
+1. Ghost Protocol TTL calculated from `scheduled_end_time + 30min buffer` instead of flat 10 hours
+2. `active_shifts.scheduled_end_time` populated at station claim from schedule_entries
+3. `active_shifts.shift_bucket` populated at station claim from schedule_entries
+4. Schedule importer assigns shift_bucket per entry based on start time majority hours
+5. Shift Extension (OPS1) uses `scheduled_end_time` correctly for all staggered schedules
+
+**Prerequisites:** OPS1-5 complete. RA1 SQL complete (scheduled_end_time column exists).
+
+---
+
+## SQL — Run before starting
+
+```sql
+-- Ensure shift_bucket exists on active_shifts
+ALTER TABLE active_shifts
+  ADD COLUMN IF NOT EXISTS shift_bucket TEXT
+    CHECK (shift_bucket IN ('6a-2p', '2p-10p', '10p-6a'));
+
+-- Ensure shift_bucket exists on schedule_entries
+ALTER TABLE schedule_entries
+  ADD COLUMN IF NOT EXISTS shift_bucket TEXT
+    CHECK (shift_bucket IN ('6a-2p', '2p-10p', '10p-6a'));
+
+-- Back-fill shift_bucket on schedule_entries from start_time
+UPDATE schedule_entries
+SET shift_bucket = CASE
+  WHEN EXTRACT(HOUR FROM start_time::time) >= 6
+    AND EXTRACT(HOUR FROM start_time::time) < 14 THEN '6a-2p'
+  WHEN EXTRACT(HOUR FROM start_time::time) >= 14
+    AND EXTRACT(HOUR FROM start_time::time) < 22 THEN '2p-10p'
+  ELSE '10p-6a'
+END
+WHERE shift_bucket IS NULL;
+
+-- Verify
+SELECT column_name FROM information_schema.columns
+WHERE table_name = 'active_shifts'
+AND column_name IN ('shift_bucket', 'scheduled_end_time', 'is_extended');
+
+SELECT column_name FROM information_schema.columns
+WHERE table_name = 'schedule_entries'
+AND column_name IN ('shift_bucket');
+```
+
+---
+
+## Before touching anything:
+
+1. Read `src/lib/repository.ts` — find `claimStation`, `fetchActiveShiftsForStore`, and Ghost Protocol / session TTL logic
+2. Read `src/pages/associate/AssociateDashboard.tsx` — find where station claim fires
+3. Read `src/hooks/useGhostProtocol.ts` or equivalent — find the 10-hour TTL
+4. Read `src/lib/scheduleImporter.ts` or equivalent — find how schedule_entries are created
+
+---
+
+## Change 1 of 4 — Update claimStation to populate scheduled_end_time and shift_bucket
+
+In `src/lib/repository.ts`, update `claimStation`:
+
+```typescript
+export async function claimStation(
+  associateId: string,
+  storeId: string,
+  station: string
+): Promise<boolean> {
+  // Look up today's schedule entry for this associate
+  const today = new Date().toISOString().split("T")[0]
+
+  const { data: scheduleEntry } = await supabase
+    .from("schedule_entries")
+    .select("start_time, end_time, shift_bucket")
+    .eq("associate_id", associateId)
+    .eq("store_id", storeId)
+    .eq("shift_date", today)
+    .maybeSingle()
+
+  // Calculate TTL:
+  // If schedule entry exists → use end_time + 30min buffer
+  // If no schedule entry → fall back to 10 hours from now
+  let expiresAt: string
+  let scheduledEndTime: string | null = null
+  let shiftBucket: string | null = null
+
+  if (scheduleEntry?.end_time) {
+    const endTime = new Date(scheduleEntry.end_time)
+    endTime.setMinutes(endTime.getMinutes() + 30) // 30min buffer
+    expiresAt = endTime.toISOString()
+    scheduledEndTime = scheduleEntry.end_time
+    shiftBucket = scheduleEntry.shift_bucket ?? inferShiftBucket(scheduleEntry.start_time)
+  } else {
+    // Fallback — 10 hours from now
+    expiresAt = new Date(Date.now() + 10 * 60 * 60 * 1000).toISOString()
+  }
+
+  // Upsert active shift
+  const { error } = await supabase
+    .from("active_shifts")
+    .upsert({
+      associate_id: associateId,
+      store_id: storeId,
+      station,
+      is_active: true,
+      expires_at: expiresAt,
+      scheduled_end_time: scheduledEndTime,
+      shift_bucket: shiftBucket,
+      original_end_time: scheduledEndTime, // preserve original for extension tracking
+    }, { onConflict: "associate_id,store_id" })
+
+  return !error
+}
+
+/**
+ * Infer shift bucket from a start time string.
+ * Used as fallback when schedule_entries.shift_bucket is null.
+ */
+function inferShiftBucket(
+  startTime: string
+): "6a-2p" | "2p-10p" | "10p-6a" {
+  const hour = new Date(startTime).getHours()
+  if (hour >= 6 && hour < 14) return "6a-2p"
+  if (hour >= 14 && hour < 22) return "2p-10p"
+  return "10p-6a"
+}
+```
+
+---
+
+## Change 2 of 4 — Update Ghost Protocol hook to use scheduled_end_time
+
+Find the Ghost Protocol TTL hook (likely `src/hooks/useGhostProtocol.ts` or inside `AssociateDashboard.tsx`). Update it to use `scheduled_end_time` from the active shift:
+
+```typescript
+// Replace the flat 10-hour check with scheduled_end_time awareness
+
+async function checkGhostProtocol(
+  associateId: string,
+  storeId: string
+): Promise<"active" | "expiring_soon" | "expired"> {
+  const { data: shift } = await supabase
+    .from("active_shifts")
+    .select("expires_at, scheduled_end_time, is_extended, on_break")
+    .eq("associate_id", associateId)
+    .eq("store_id", storeId)
+    .eq("is_active", true)
+    .maybeSingle()
+
+  if (!shift) return "expired"
+  if (shift.on_break) return "active" // never ghost during break
+
+  const now = Date.now()
+  const expiresAt = new Date(shift.expires_at).getTime()
+  const timeLeft = expiresAt - now
+
+  // Final hour warning
+  if (timeLeft <= 60 * 60 * 1000 && timeLeft > 15 * 60 * 1000) {
+    return "expiring_soon"
+  }
+
+  // Final 15 minutes — extraction
+  if (timeLeft <= 15 * 60 * 1000 && timeLeft > 0) {
+    return "expiring_soon" // triggers extraction sequence
+  }
+
+  if (timeLeft <= 0) return "expired"
+
+  return "active"
+}
+```
+
+The key change: `expires_at` is now set from `scheduled_end_time + 30min` at station claim. Ghost Protocol naturally respects staggered schedules without any additional logic.
+
+---
+
+## Change 3 of 4 — Update schedule importer to assign shift_bucket
+
+In the schedule CSV importer (wherever `schedule_entries` are created), add shift_bucket assignment:
+
+```typescript
+function assignShiftBucket(
+  startTime: string,
+  endTime: string
+): "6a-2p" | "2p-10p" | "10p-6a" {
+  const startHour = new Date(startTime).getHours()
+  const endHour = new Date(endTime).getHours()
+
+  // Calculate majority hours in each bucket
+  const buckets = {
+    "6a-2p": 0,
+    "2p-10p": 0,
+    "10p-6a": 0,
+  }
+
+  // Walk through each hour of the shift and tally which bucket it falls in
+  let current = new Date(startTime)
+  const end = new Date(endTime)
+
+  while (current < end) {
+    const h = current.getHours()
+    if (h >= 6 && h < 14) buckets["6a-2p"]++
+    else if (h >= 14 && h < 22) buckets["2p-10p"]++
+    else buckets["10p-6a"]++
+    current.setHours(current.getHours() + 1)
+  }
+
+  // Return the bucket with most hours
+  return Object.entries(buckets).sort(
+    ([, a], [, b]) => b - a
+  )[0][0] as "6a-2p" | "2p-10p" | "10p-6a"
+}
+
+// Use this when creating schedule_entries:
+// For the supervisor working 9pm-7:30am:
+// 6a-2p: 1.5 hours (6am-7:30am)
+// 10p-6a: 9 hours (10pm-6am)
+// → assigned to 10p-6a ✅
+
+// For Eden working 11pm-3am:
+// 10p-6a: 4 hours
+// → assigned to 10p-6a ✅
+
+// For Kristin working 12am-6am:
+// 10p-6a: 6 hours
+// → assigned to 10p-6a ✅
+```
+
+Update the schedule entry creation to include `shift_bucket`:
+
+```typescript
+await supabase.from("schedule_entries").upsert({
+  associate_id: associateId,
+  store_id: storeId,
+  shift_date: shiftDate,
+  start_time: startTime,
+  end_time: endTime,
+  shift_bucket: assignShiftBucket(startTime, endTime), // ← new
+})
+```
+
+---
+
+## Change 4 of 4 — Update Shift Extension to use scheduled_end_time
+
+In `src/lib/repository.ts`, update `extendShift` to extend from `scheduled_end_time` rather than `now`:
+
+```typescript
+export async function extendShift(
+  associateId: string,
+  storeId: string,
+  extensionMinutes: number,
+  reason: "extending" | "leaving_soon"
+): Promise<boolean> {
+  // Get current shift to find scheduled_end_time
+  const { data: shift } = await supabase
+    .from("active_shifts")
+    .select("scheduled_end_time, expires_at")
+    .eq("associate_id", associateId)
+    .eq("store_id", storeId)
+    .eq("is_active", true)
+    .maybeSingle()
+
+  // Extend from scheduled_end_time if available, otherwise from now
+  const baseTime = shift?.scheduled_end_time
+    ? new Date(shift.scheduled_end_time)
+    : new Date()
+
+  const newExpiry = new Date(
+    baseTime.getTime() + extensionMinutes * 60 * 1000
+  ).toISOString()
+
+  const { error } = await supabase
+    .from("active_shifts")
+    .update({
+      expires_at: newExpiry,
+      is_extended: true,
+      extension_reason: reason === "extending"
+        ? `Extended ${extensionMinutes} minutes past scheduled end`
+        : "Wrapping up — leaving soon",
+    })
+    .eq("associate_id", associateId)
+    .eq("store_id", storeId)
+    .eq("is_active", true)
+
+  return !error
+}
+```
+
+---
+
+## Verify
+
+Run:
+
+```bash
+npm run build
+```
+
+**Test staggered TTL:**
+1. Import a schedule entry with end_time = 2 hours from now
+2. Claim a station as that associate
+3. Check `active_shifts.expires_at` in Supabase — should be end_time + 30 minutes, NOT 10 hours from now
+4. Check `active_shifts.scheduled_end_time` — should match the schedule entry end_time
+5. Check `active_shifts.shift_bucket` — should match the majority-hours calculation
+
+**Test shift bucket assignment:**
+1. Import a schedule entry: start 9pm, end 7:30am
+2. Check `schedule_entries.shift_bucket` = `10p-6a` ✅
+3. Import: start 6am, end 2pm → `6a-2p` ✅
+4. Import: start 11pm, end 3am → `10p-6a` ✅
+
+**Test Ghost Protocol with staggered schedule:**
+- Associate scheduled 12am-6am claims station at midnight
+- Ghost Protocol should fire at ~6:30am (end_time + 30min)
+- NOT at 10am (flat 10-hour TTL)
+
+**Test no schedule entry fallback:**
+- Associate with no schedule entry claims station
+- Ghost Protocol falls back to 10 hours from now
+
+Build must pass with zero TypeScript errors before you stop.

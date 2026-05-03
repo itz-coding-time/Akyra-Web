@@ -26,3 +26,9 @@ dist-ssr
 # Environment variables
 .env.local
 .env.*.local
+
+# Local Backups and Junk
+Recovery.lol/
+.claude/
+"prompts 1/"
+*.zip
