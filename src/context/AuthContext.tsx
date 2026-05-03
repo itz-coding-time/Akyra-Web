@@ -101,6 +101,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setState((s) => ({ ...s, status: "loading" }))
 
     supabase.auth.getSession().then(async ({ data: { session } }) => {
+      console.log("[AuthContext] getSession resolved:", !!session?.user)
       if (!session?.user) {
         setState({ status: "signed-out", profile: null, licenseWarning: null, error: null })
         return
@@ -113,16 +114,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .eq("auth_uid", session.user.id)
         .maybeSingle()
 
+      console.log("[AuthContext] profile resolved from session:", !!profile)
       if (!profile) {
         setState({ status: "signed-out", profile: null, licenseWarning: null, error: null })
         return
       }
 
       await resolveSessionState(profile)
+    }).catch(err => {
+      console.error("[AuthContext] getSession error:", err)
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        console.log("[AuthContext] onAuthStateChange event:", event, !!session?.user)
         if (event === "SIGNED_IN" && session?.user) {
           const { data: profile } = await supabase
             .from("profiles")

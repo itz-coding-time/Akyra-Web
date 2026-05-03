@@ -102,31 +102,62 @@ export function DbAdminPanel() {
 
   useEffect(() => {
     setIsLoading(true)
+    console.log("[DbAdminPanel] view change:", view.level)
     if (view.level === "orgs") {
-      fetchAllOrgs().then(data => { setOrgs(data); setIsLoading(false) })
+      fetchAllOrgs().then(data => { 
+        console.log("[DbAdminPanel] fetchAllOrgs success:", data.length)
+        setOrgs(data); 
+        setIsLoading(false) 
+      }).catch(err => {
+        console.error("[DbAdminPanel] fetchAllOrgs failed:", err)
+        setIsLoading(false)
+      })
     } else if (view.level === "org_associates") {
       fetchProfilesForOrg(view.org.id).then(data => {
+        console.log("[DbAdminPanel] fetchProfilesForOrg success:", data.length)
         setProfiles(data)
+        setIsLoading(false)
+      }).catch(err => {
+        console.error("[DbAdminPanel] fetchProfilesForOrg failed:", err)
         setIsLoading(false)
       })
     } else if (view.level === "regions") {
-      fetchRegionsForOrg(view.org.id).then(data => { setRegions(data); setIsLoading(false) })
+      fetchRegionsForOrg(view.org.id).then(data => { 
+        console.log("[DbAdminPanel] fetchRegionsForOrg success:", data.length)
+        setRegions(data); 
+        setIsLoading(false) 
+      }).catch(err => {
+        console.error("[DbAdminPanel] fetchRegionsForOrg failed:", err)
+        setIsLoading(false)
+      })
     } else if (view.level === "districts") {
       fetchDistrictsForRegion(view.region.id).then(data => {
+        console.log("[DbAdminPanel] fetchDistrictsForRegion success:", data.length)
         setDistricts(data)
+        setIsLoading(false)
+      }).catch(err => {
+        console.error("[DbAdminPanel] fetchDistrictsForRegion failed:", err)
         setIsLoading(false)
       })
     } else if (view.level === "stores") {
       fetchStoresForOrg(view.org.id).then(data => {
+        console.log("[DbAdminPanel] fetchStoresForOrg success:", data.length)
         const filtered = view.district
           ? data.filter(s => (s as any).districtId === view.district.id)
           : data
         setStores(filtered)
         setIsLoading(false)
+      }).catch(err => {
+        console.error("[DbAdminPanel] fetchStoresForOrg failed:", err)
+        setIsLoading(false)
       })
     } else if (view.level === "profiles") {
       fetchProfilesForStore(view.store.id).then(data => {
+        console.log("[DbAdminPanel] fetchProfilesForStore success:", data.length)
         setProfiles(data)
+        setIsLoading(false)
+      }).catch(err => {
+        console.error("[DbAdminPanel] fetchProfilesForStore failed:", err)
         setIsLoading(false)
       })
     }
