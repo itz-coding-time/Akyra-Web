@@ -23,7 +23,7 @@ export function HoldoverModal({
     setIsLoading(true)
     const holdoverId = await initiateHoldover(associateId, storeId, shiftBucket)
     setIsLoading(false)
-    if (holdoverId) onHoldoverStarted(holdoverId.toString())
+    if (holdoverId) onHoldoverStarted(holdoverId)
   }
 
   return (

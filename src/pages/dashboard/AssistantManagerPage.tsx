@@ -51,7 +51,7 @@ export function AssistantManagerPage() {
 
     Promise.all([
       fetchTasksForSupervisor(storeId),
-      fetchStoreMetrics(storeId),
+      fetchStoreMetrics(storeId, 30),
       fetchProfilesForStore(storeId),
       getAssociateBurnCards(profileId),
     ]).then(([tasks, m, p, bc]) => {

@@ -144,8 +144,7 @@ export function AssociateTaskView({
   // Check shift overdue every 5 minutes
   useEffect(() => {
     async function checkOverdue() {
-      const over = await checkShiftOverdue(associate.id, associate.store_id)
-      const minutes = typeof over === "number" ? over : (over ? 1 : 0)
+      const minutes = await checkShiftOverdue(associate.id, associate.store_id)
       if (minutes > 0 && !showExtension) {
         setMinutesOverdue(minutes)
         setShowExtension(true)
@@ -772,7 +771,8 @@ export function AssociateTaskView({
         <TakeBreakModal
           associateId={associate.id}
           storeId={associate.store_id}
-          onStarted={(breakStartedAt: string) => {
+          roleRank={associate.role_rank ?? 1}
+          onBreakStarted={(breakStartedAt) => {
             setShowBreakModal(false)
             setBreakStatus({
               onBreak: true,

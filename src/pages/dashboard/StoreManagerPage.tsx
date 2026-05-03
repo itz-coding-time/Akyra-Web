@@ -164,8 +164,7 @@ export function StoreManagerPage() {
               timeSuggestions={timeSuggestions}
               equipmentIssues={equipmentIssues}
               incidents={incidents}
-              profileId={profile.id}
-              storeId={profile.current_store_id!}
+              profileId={profile?.id ?? ""}
               onChallengeResolved={async () => {
                 setChallenges(await fetchChallengedTasksForStoreManager(storeId))
               }}
@@ -393,7 +392,6 @@ interface WorkOrdersPanelProps {
   equipmentIssues: any[]
   incidents: any[]
   profileId: string
-  storeId: string
   onChallengeResolved: () => Promise<void>
   onTimeSuggestionReviewed: () => Promise<void>
   onIncidentResolved: () => Promise<void>
@@ -405,7 +403,6 @@ function WorkOrdersPanel({
   equipmentIssues,
   incidents,
   profileId,
-  storeId,
   onChallengeResolved,
   onTimeSuggestionReviewed,
   onIncidentResolved,
@@ -422,7 +419,7 @@ function WorkOrdersPanel({
 
   async function handleTimeSuggestion(id: string, apply: boolean, taskId?: string, newMinutes?: number) {
     setReviewingId(id)
-    await reviewTimeSuggestion(storeId, id, apply, taskId, newMinutes)
+    await reviewTimeSuggestion(id, profileId, apply, taskId, newMinutes)
     await onTimeSuggestionReviewed()
     setReviewingId(null)
   }

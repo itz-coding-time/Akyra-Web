@@ -48,16 +48,18 @@ export function useEquipmentIssues(storeId: string | null | undefined) {
     associateId: string,
     category: string,
     description: string,
-    _photoFile?: File
+    photoFile?: File
   ): Promise<boolean> {
     if (!storeId) return false
     setIsSubmitting(true)
 
     const result = await createEquipmentIssue(
       storeId,
+      storeId, // reported_at_store_id same as store_id for now
       associateId,
       category,
-      description
+      description,
+      photoFile
     )
 
     setIsSubmitting(false)
@@ -67,9 +69,10 @@ export function useEquipmentIssues(storeId: string | null | undefined) {
 
   async function updateStatus(
     issueId: string,
-    status: IssueStatus
+    status: IssueStatus,
+    resolvedByAssociateId?: string
   ): Promise<boolean> {
-    const success = await updateEquipmentIssueStatus(issueId, status)
+    const success = await updateEquipmentIssueStatus(issueId, status, resolvedByAssociateId)
     if (success) {
       setIssues(prev => prev.map(i =>
         i.id === issueId ? { ...i, status } : i

@@ -81,7 +81,7 @@ export function OverviewPage() {
               className="flex items-center gap-2 text-xs font-mono uppercase tracking-widest text-akyra-secondary hover:text-white border border-akyra-border rounded-lg px-3 py-2 transition-colors"
             >
               <Shield className="w-3.5 h-3.5" />
-              Reinforce
+              Respawn
             </button>
           )}
           {storeId && supervisorAssociateId && (
@@ -278,7 +278,6 @@ export function OverviewPage() {
       {showRespawnAuth && supervisorAssociateId && (
         <RespawnAuthorizationPanel
           supervisorAssociateId={supervisorAssociateId}
-          storeId={storeId ?? ""}
           onDismiss={() => setShowRespawnAuth(false)}
         />
       )}
