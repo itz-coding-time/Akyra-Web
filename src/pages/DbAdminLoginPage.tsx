@@ -5,12 +5,6 @@ import { AkyraLogo } from "../components/AkyraLogo"
 import { LoadingSpinner } from "../components/LoadingSpinner"
 import { useAuth } from "../context"
 
-const DB_ADMIN_EMAIL = import.meta.env.VITE_DB_ADMIN_EMAIL
-
-function normalizeEmail(email: string | null | undefined) {
-  return email?.trim().toLowerCase() ?? ""
-}
-
 export function DbAdminLoginPage() {
   const navigate = useNavigate()
   const { resolveSession } = useAuth()
@@ -21,34 +15,22 @@ export function DbAdminLoginPage() {
   useEffect(() => {
     async function checkSession() {
       try {
-        // Handle PKCE flow — Supabase returns ?code= in URL
         await consumeOAuthRedirectSession()
 
         const { data: { session } } = await supabase.auth.getSession()
 
         if (!session) {
-          // No session — show the login button
           setIsChecking(false)
           return
         }
 
-        const configuredAdminEmail = normalizeEmail(DB_ADMIN_EMAIL)
-        const signedInEmail = normalizeEmail(session.user.email)
-
-        if (configuredAdminEmail && signedInEmail === configuredAdminEmail) {
-          // Sync session with AuthContext BEFORE navigating
-          // This ensures ProtectedRoute sees an authenticated state
-          const profile = await resolveSession()
-          if (profile?.role === "db_admin") {
-            navigate("/app/dashboard", { replace: true })
-          } else {
-            console.warn("[DbAdminLogin] Profile is not db_admin or rank too low")
-            await supabase.auth.signOut()
-            navigate("/", { replace: true })
-          }
+        // Sync session with AuthContext before navigating so ProtectedRoute
+        // and RoleRouter can render from the fresh OAuth profile.
+        const profile = await resolveSession()
+        if (profile) {
+          navigate("/app/dashboard", { replace: true })
         } else {
-          // Wrong Google account — sign out silently, return to home
-          console.warn("[DbAdminLogin] Unauthorized email:", signedInEmail)
+          console.warn("[DbAdminLogin] No profile found for Google session:", session.user.email)
           await supabase.auth.signOut()
           navigate("/", { replace: true })
         }
@@ -80,8 +62,6 @@ export function DbAdminLoginPage() {
       setError("Sign in failed. Please try again.")
       setIsLoading(false)
     }
-    // No error — browser navigates to Google, then back to /app/login/dbad
-    // The mount effect above detects the session on return
   }
 
   if (isChecking) {

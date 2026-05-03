@@ -3,7 +3,7 @@ import { useAutoUpdate } from "./hooks"
 import { UpdateOverlay } from "./components"
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom"
 import { useAuth } from "./context"
-import { consumeOAuthRedirectSession } from "./lib/supabase"
+import { consumeOAuthRedirectSession, supabase } from "./lib/supabase"
 import {
   LandingPage,
   AboutPage,
@@ -50,8 +50,21 @@ function ProtectedRoute({ children, minRank = 1 }: { children: React.ReactNode; 
 
 function OAuthRedirectRecovery() {
   const navigate = useNavigate()
+  const { resolveSession } = useAuth()
 
   useEffect(() => {
+    let cancelled = false
+
+    async function waitForOAuthSession() {
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session?.user) return session
+        await new Promise((resolve) => setTimeout(resolve, 100))
+      }
+
+      return null
+    }
+
     async function recoverOAuthRedirect() {
       try {
         const hasOAuthParams =
@@ -64,14 +77,29 @@ function OAuthRedirectRecovery() {
         if (!consumed) return
 
         const pendingGoogleEeid = sessionStorage.getItem("pending_google_eeid")
-        navigate(pendingGoogleEeid ? "/app/auth/callback" : "/app/login/dbad", { replace: true })
+        if (pendingGoogleEeid) {
+          navigate("/app/auth/callback", { replace: true })
+          return
+        }
+
+        const session = await waitForOAuthSession()
+        if (!session || cancelled) return
+
+        const profile = await resolveSession()
+        if (cancelled) return
+
+        navigate(profile ? "/app/dashboard" : "/", { replace: true })
       } catch (err) {
         console.error("[OAuthRecovery] Failed to recover redirect session:", err)
       }
     }
 
     recoverOAuthRedirect()
-  }, [navigate])
+
+    return () => {
+      cancelled = true
+    }
+  }, [navigate, resolveSession])
 
   return null
 }
