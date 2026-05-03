@@ -98,47 +98,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Restore session on mount
   useEffect(() => {
+    let mounted = true
     setState((s) => ({ ...s, status: "loading" }))
-
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (!session?.user) {
-        setState({ status: "signed-out", profile: null, licenseWarning: null, error: null })
-        return
-      }
-
-      // Resolve profile from auth user
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("auth_uid", session.user.id)
-        .maybeSingle()
-
-      if (!profile) {
-        setState({ status: "signed-out", profile: null, licenseWarning: null, error: null })
-        return
-      }
-
-      await resolveSessionState(profile)
-    })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        if (event === "SIGNED_IN" && session?.user) {
+        if (!mounted) return
+        console.log("[AuthContext] onAuthStateChange event:", event, !!session?.user)
+
+        if ((event === "INITIAL_SESSION" || event === "SIGNED_IN" || event === "TOKEN_REFRESHED") && session?.user) {
           const { data: profile } = await supabase
             .from("profiles")
             .select("*")
             .eq("auth_uid", session.user.id)
             .maybeSingle()
-          if (profile) await resolveSessionState(profile)
+          
+          if (!mounted) return
+
+          if (profile) {
+            console.log("[AuthContext] profile resolved from event:", event)
+            await resolveSessionState(profile)
+          } else {
+            console.log("[AuthContext] session present but no profile found")
+            setState({ status: "signed-out", profile: null, licenseWarning: null, error: null })
+          }
         } else if (event === "SIGNED_OUT" || (event === "TOKEN_REFRESHED" && !session)) {
-          setState({ status: "signed-out", profile: null, licenseWarning: null, error: null })
+          if (mounted) setState({ status: "signed-out", profile: null, licenseWarning: null, error: null })
         } else if (!session?.user) {
-          setState({ status: "signed-out", profile: null, licenseWarning: null, error: null })
+          if (mounted) setState({ status: "signed-out", profile: null, licenseWarning: null, error: null })
         }
       }
     )
 
-    return () => subscription.unsubscribe()
+    return () => {
+      mounted = false
+      subscription.unsubscribe()
+    }
   }, [resolveSessionState])
 
   const signIn = useCallback(
