@@ -20,34 +20,41 @@ export function DbAdminLoginPage() {
 
   useEffect(() => {
     async function checkSession() {
-      // Handle PKCE flow — Supabase returns ?code= in URL
-      await consumeOAuthRedirectSession()
+      try {
+        // Handle PKCE flow — Supabase returns ?code= in URL
+        await consumeOAuthRedirectSession()
 
-      const { data: { session } } = await supabase.auth.getSession()
+        const { data: { session } } = await supabase.auth.getSession()
 
-      if (!session) {
-        // No session — show the login button
-        setIsChecking(false)
-        return
-      }
+        if (!session) {
+          // No session — show the login button
+          setIsChecking(false)
+          return
+        }
 
-      const configuredAdminEmail = normalizeEmail(DB_ADMIN_EMAIL)
-      const signedInEmail = normalizeEmail(session.user.email)
+        const configuredAdminEmail = normalizeEmail(DB_ADMIN_EMAIL)
+        const signedInEmail = normalizeEmail(session.user.email)
 
-      if (configuredAdminEmail && signedInEmail === configuredAdminEmail) {
-        // Sync session with AuthContext BEFORE navigating
-        // This ensures ProtectedRoute sees an authenticated state
-        const profile = await resolveSession()
-        if (profile?.role === "db_admin" && (profile.role_rank ?? 0) >= 8) {
-          navigate("/app/dashboard", { replace: true })
+        if (configuredAdminEmail && signedInEmail === configuredAdminEmail) {
+          // Sync session with AuthContext BEFORE navigating
+          // This ensures ProtectedRoute sees an authenticated state
+          const profile = await resolveSession()
+          if (profile?.role === "db_admin") {
+            navigate("/app/dashboard", { replace: true })
+          } else {
+            console.warn("[DbAdminLogin] Profile is not db_admin or rank too low")
+            await supabase.auth.signOut()
+            navigate("/", { replace: true })
+          }
         } else {
+          // Wrong Google account — sign out silently, return to home
+          console.warn("[DbAdminLogin] Unauthorized email:", signedInEmail)
           await supabase.auth.signOut()
           navigate("/", { replace: true })
         }
-      } else {
-        // Wrong Google account — sign out silently, return to home
-        await supabase.auth.signOut()
-        navigate("/", { replace: true })
+      } catch (err) {
+        console.error("[DbAdminLogin] Session check failed:", err)
+        setIsChecking(false)
       }
     }
 

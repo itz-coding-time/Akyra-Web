@@ -53,17 +53,21 @@ function OAuthRedirectRecovery() {
 
   useEffect(() => {
     async function recoverOAuthRedirect() {
-      const hasOAuthParams =
-        window.location.search.includes("code=") ||
-        window.location.hash.includes("access_token=")
+      try {
+        const hasOAuthParams =
+          window.location.search.includes("code=") ||
+          window.location.hash.includes("access_token=")
 
-      if (!hasOAuthParams) return
+        if (!hasOAuthParams) return
 
-      const consumed = await consumeOAuthRedirectSession()
-      if (!consumed) return
+        const consumed = await consumeOAuthRedirectSession()
+        if (!consumed) return
 
-      const pendingGoogleEeid = sessionStorage.getItem("pending_google_eeid")
-      navigate(pendingGoogleEeid ? "/app/auth/callback" : "/app/login/dbad", { replace: true })
+        const pendingGoogleEeid = sessionStorage.getItem("pending_google_eeid")
+        navigate(pendingGoogleEeid ? "/app/auth/callback" : "/app/login/dbad", { replace: true })
+      } catch (err) {
+        console.error("[OAuthRecovery] Failed to recover redirect session:", err)
+      }
     }
 
     recoverOAuthRedirect()
