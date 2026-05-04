@@ -66,34 +66,6 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
-function OAuthRedirectRecovery() {
-  const navigate = useNavigate()
-
-  useEffect(() => {
-    async function recoverOAuthRedirect() {
-      try {
-        const hasOAuthParams =
-          window.location.search.includes("code=") ||
-          window.location.hash.includes("access_token=")
-
-        if (!hasOAuthParams) return
-
-        const consumed = await consumeOAuthRedirectSession()
-        if (!consumed) return
-
-        const pendingGoogleEeid = sessionStorage.getItem("pending_google_eeid")
-        navigate(pendingGoogleEeid ? "/app/auth/callback" : "/app/login/dbad", { replace: true })
-      } catch (err) {
-        console.error("[OAuthRecovery] Failed to recover redirect session:", err)
-      }
-    }
-
-    recoverOAuthRedirect()
-  }, [navigate])
-
-  return null
-}
-
 function RoleRouter() {
   const { state, dismissPasskeyPrompt } = useAuth()
   const profile = state.profile
@@ -198,7 +170,6 @@ function App() {
 
   return (
     <BrowserRouter>
-      <OAuthRedirectRecovery />
       <Routes>
         {/* Public landing surface */}
         <Route

@@ -48,6 +48,8 @@ export function ClaimAccountScreen({ eeid, welcomePhrase, onBack }: ClaimAccount
 
     if (profile) {
       await resolveSession()
+      // Small delay to allow DB triggers and background listeners to sync auth_uid
+      await new Promise(resolve => setTimeout(resolve, 500))
       navigate("/app/dashboard")
     } else {
       setError(regError || "Could not complete setup. Please try again.")
