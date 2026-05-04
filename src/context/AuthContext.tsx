@@ -107,20 +107,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.log("[AuthContext] onAuthStateChange event:", event, !!session?.user)
 
         if ((event === "INITIAL_SESSION" || event === "SIGNED_IN" || event === "TOKEN_REFRESHED") && session?.user) {
-          const { data: profile } = await supabase
-            .from("profiles")
-            .select("*")
-            .eq("auth_uid", session.user.id)
-            .maybeSingle()
+          // Robust session resolution — handles linking race conditions
+          const profile = await resolveSession()
           
           if (!mounted) return
 
           if (profile) {
-            console.log("[AuthContext] profile resolved from event:", event)
-            await resolveSessionState(profile)
+            console.log("[AuthContext] session resolved successfully")
           } else {
-            console.log("[AuthContext] session present but no profile found")
-            setState({ status: "signed-out", profile: null, licenseWarning: null, error: null })
+            // Profile missing — might be a "Claim Account" flow in progress. 
+            // We stay in "loading" or "idle" rather than force "signed-out" if we have a session.
+            console.log("[AuthContext] session present but no profile resolved yet")
           }
         } else if (event === "SIGNED_OUT" || (event === "TOKEN_REFRESHED" && !session)) {
           if (mounted) setState({ status: "signed-out", profile: null, licenseWarning: null, error: null })

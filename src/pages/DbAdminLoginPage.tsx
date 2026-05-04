@@ -38,11 +38,14 @@ export function DbAdminLoginPage() {
         if (configuredAdminEmail && signedInEmail === configuredAdminEmail) {
           // Sync session with AuthContext BEFORE navigating
           // This ensures ProtectedRoute sees an authenticated state
+          console.log("[DbAdminLogin] Authorized email detected, resolving session...")
           const profile = await resolveSession()
+          
           if (profile?.role === "db_admin") {
+            console.log("[DbAdminLogin] Profile confirmed as db_admin, navigating to dashboard")
             navigate("/app/dashboard", { replace: true })
           } else {
-            console.warn("[DbAdminLogin] Profile is not db_admin or rank too low")
+            console.warn("[DbAdminLogin] Profile is not db_admin or rank too low. Profile found:", !!profile)
             await supabase.auth.signOut()
             navigate("/", { replace: true })
           }

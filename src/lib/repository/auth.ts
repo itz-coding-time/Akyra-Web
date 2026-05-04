@@ -278,7 +278,7 @@ export async function registerAuthForOrg(
     return { profile: null, error: "SYNC_ERROR: PROFILE_NOT_FOUND" }
   }
 
-  // 2. Verify against associates table (must have an associate record to claim)
+  // 2. Verify against associates table (optional match)
   const { data: associates, error: associateError } = await supabase
     .from("associates")
     .select("*")
@@ -287,8 +287,12 @@ export async function registerAuthForOrg(
   
   const associateMatch = associates?.find(a => a.profile_id === existingProfile.id) || associates?.[0]
 
-  if (associateError || !associateMatch) {
-    return { profile: null, error: "SYNC_ERROR: ASSOCIATE_RECORD_MISSING" }
+  if (associateError) {
+    console.warn("[Auth] Associate lookup error:", associateError.message)
+  }
+
+  if (!associateMatch) {
+    console.warn("[Auth] No associate record found to link. Profile link will proceed without associate atomicity.")
   }
 
   const syntheticEmail = buildSyntheticEmail(eeid, welcomePhrase)
@@ -345,7 +349,7 @@ export async function registerAuthForOrg(
   }
 
   // 4. Ensure associates table update is atomic with profiles
-  if (associateMatch.profile_id !== existingProfile.id) {
+  if (associateMatch && associateMatch.profile_id !== existingProfile.id) {
     await supabase
       .from("associates")
       .update({ profile_id: existingProfile.id })
