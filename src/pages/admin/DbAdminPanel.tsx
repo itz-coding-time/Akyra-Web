@@ -143,7 +143,7 @@ export function DbAdminPanel() {
       fetchStoresForOrg(view.org.id).then(data => {
         console.log("[DbAdminPanel] fetchStoresForOrg success:", data.length)
         const filtered = view.district
-          ? data.filter(s => (s as any).districtId === view.district.id)
+          ? data.filter(s => s.districtId === view.district?.id)
           : data
         setStores(filtered)
         setIsLoading(false)
@@ -220,7 +220,7 @@ export function DbAdminPanel() {
         const success = await deleteOrganization(org.id)
         if (success) {
           setOrgs(prev => prev.filter(o => o.id !== org.id))
-          if (view.level !== "orgs" && (view as any).org?.id === org.id) {
+          if (view.level !== "orgs" && "org" in view && view.org?.id === org.id) {
             setView({ level: "orgs" })
           }
         } else {
@@ -281,7 +281,7 @@ export function DbAdminPanel() {
     if (id) {
       const updated = await fetchStoresForOrg(view.org.id)
       const filtered = view.district
-        ? updated.filter(s => (s as any).districtId === view.district?.id)
+        ? updated.filter(s => s.districtId === view.district?.id)
         : updated
       setStores(filtered)
       setNewStoreNumber("")
@@ -361,35 +361,35 @@ export function DbAdminPanel() {
           </>
         )}
 
-        {(view.level === "districts" || view.level === "stores" || view.level === "profiles") && (
+        {("region" in view) && (
           <>
             <ChevronRight className="w-3 h-3 text-akyra-secondary shrink-0" />
             <button
-              onClick={() => setView({ level: "districts", org: view.org, region: (view as any).region })}
+              onClick={() => setView({ level: "districts", org: view.org, region: view.region })}
               className={`text-xs font-mono shrink-0 ${view.level === "districts" ? "text-white" : "text-akyra-secondary hover:text-white"}`}
             >
-              {(view as any).region.name}
+              {view.region?.name ?? "Unknown Region"}
             </button>
           </>
         )}
 
-        {(view.level === "stores" || view.level === "profiles") && (
+        {("district" in view && "region" in view) && (
           <>
             <ChevronRight className="w-3 h-3 text-akyra-secondary shrink-0" />
             <button
-              onClick={() => setView({ level: "stores", org: view.org, region: (view as any).region, district: (view as any).district })}
+              onClick={() => setView({ level: "stores", org: view.org, region: view.region, district: view.district } as AdminView)}
               className={`text-xs font-mono shrink-0 ${view.level === "stores" ? "text-white" : "text-akyra-secondary hover:text-white"}`}
             >
-              {(view as any).district.name}
+              {view.district?.name ?? "Unknown District"}
             </button>
           </>
         )}
 
-        {view.level === "profiles" && (
+        {("store" in view) && (
           <>
             <ChevronRight className="w-3 h-3 text-akyra-secondary shrink-0" />
             <span className="text-xs font-mono text-white shrink-0">
-              Store {view.store.storeNumber}
+              Store {view.store?.storeNumber ?? "Unknown"}
             </span>
           </>
         )}

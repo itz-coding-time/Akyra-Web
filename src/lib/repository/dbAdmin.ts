@@ -38,6 +38,7 @@ export interface StoreSummary {
   billingStatus: string
   associateCount: number
   profileCount: number
+  districtId?: string
 }
 
 export async function deleteOrganization(orgId: string): Promise<boolean> {
