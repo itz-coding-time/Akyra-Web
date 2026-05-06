@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { consumeOAuthRedirectSession, supabase } from "../lib/supabase"
+import { supabase } from "../lib/supabase"
 import { AkyraLogo } from "../components/AkyraLogo"
 import { LoadingSpinner } from "../components/LoadingSpinner"
 import { useAuth } from "../context"
@@ -13,56 +13,141 @@ function normalizeEmail(email: string | null | undefined) {
 
 export function DbAdminLoginPage() {
   const navigate = useNavigate()
-  const { resolveSession } = useAuth()
+  const { state } = useAuth()
   const [isLoading, setIsLoading] = useState(false)
   const [isChecking, setIsChecking] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  // Tracks whether we confirmed the incoming email is authorized.
+  // Used by Effect 2 to distinguish "AuthContext signed out because no profile"
+  // from "user just loaded the page with no session".
+  const emailAuthorized = useRef(false)
+
+  // ── Effect 1: Handle OAuth redirect or existing session ──────────────────
+  // When ?code= is in the URL (PKCE redirect), Supabase auto-exchanges it
+  // (detectSessionInUrl: true) and fires SIGNED_IN via onAuthStateChange.
+  // We listen for that event instead of calling getSession() immediately,
+  // because the network round-trip hasn't completed yet at mount time.
   useEffect(() => {
-    async function checkSession() {
-      try {
-        // Handle PKCE flow — Supabase returns ?code= in URL
-        await consumeOAuthRedirectSession()
+    const params = new URLSearchParams(window.location.search)
+    const code = params.get("code")
 
-        const { data: { session } } = await supabase.auth.getSession()
+    console.log("[DbAdminLogin] mount — code:", code ? "present" : "none")
+    console.log("[DbAdminLogin] DB_ADMIN_EMAIL configured:", !!DB_ADMIN_EMAIL)
 
-        if (!session) {
-          // No session — show the login button
-          setIsChecking(false)
-          return
-        }
+    if (code) {
+      // PKCE redirect detected — keep the spinner and wait for SIGNED_IN.
+      console.log("[DbAdminLogin] ?code= detected — registering onAuthStateChange listener")
 
-        const configuredAdminEmail = normalizeEmail(DB_ADMIN_EMAIL)
-        const signedInEmail = normalizeEmail(session.user.email)
+      let handled = false
 
-        if (configuredAdminEmail && signedInEmail === configuredAdminEmail) {
-          // Sync session with AuthContext BEFORE navigating
-          // This ensures ProtectedRoute sees an authenticated state
-          console.log("[DbAdminLogin] Authorized email detected, resolving session...")
-          const profile = await resolveSession()
-          
-          if (profile?.role === "db_admin") {
-            console.log("[DbAdminLogin] Profile confirmed as db_admin, navigating to dashboard")
-            navigate("/app/dashboard", { replace: true })
-          } else {
-            console.warn("[DbAdminLogin] Profile is not db_admin or rank too low. Profile found:", !!profile)
-            await supabase.auth.signOut()
-            navigate("/", { replace: true })
-          }
+      function handleAuthorizedSession(email: string | null | undefined) {
+        if (handled) return
+        handled = true
+
+        const signedInEmail = normalizeEmail(email)
+        const configuredEmail = normalizeEmail(DB_ADMIN_EMAIL)
+
+        console.log("[DbAdminLogin] session email:", signedInEmail)
+
+        if (configuredEmail && signedInEmail === configuredEmail) {
+          console.log("[DbAdminLogin] authorized email confirmed — letting AuthContext resolve profile")
+          emailAuthorized.current = true
+          // Keep isChecking true. Effect 2 navigates once state.status === "signed-in".
         } else {
-          // Wrong Google account — sign out silently, return to home
-          console.warn("[DbAdminLogin] Unauthorized email:", signedInEmail)
-          await supabase.auth.signOut()
-          navigate("/", { replace: true })
+          console.warn("[DbAdminLogin] unauthorized email:", signedInEmail)
+          supabase.auth.signOut()
+          setError("Unauthorized Google account.")
+          setIsChecking(false)
         }
-      } catch (err) {
-        console.error("[DbAdminLogin] Session check failed:", err)
-        setIsChecking(false)
       }
+
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+        console.log("[DbAdminLogin] onAuthStateChange:", event, "—", session?.user?.email ?? "no email")
+
+        if (event === "SIGNED_IN" && session?.user) {
+          handleAuthorizedSession(session.user.email)
+          subscription.unsubscribe()
+        } else if (event === "SIGNED_OUT") {
+          if (!handled) {
+            console.warn("[DbAdminLogin] SIGNED_OUT before SIGNED_IN — showing login button")
+            setIsChecking(false)
+          }
+          subscription.unsubscribe()
+        }
+      })
+
+      // Fallback: exchange may have already completed before the listener registered.
+      // If getSession() already has a user, handle it now.
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session?.user && !handled) {
+          console.log("[DbAdminLogin] session already present before listener fired — handling now")
+          handleAuthorizedSession(session.user.email)
+        }
+      })
+
+      return () => subscription.unsubscribe()
     }
 
-    checkSession()
-  }, [navigate, resolveSession])
+    // No code param — check for an existing session (returning visitor or page refresh).
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      console.log("[DbAdminLogin] existing session:", session?.user?.email ?? "none")
+
+      if (!session?.user) {
+        setIsChecking(false)
+        return
+      }
+
+      const signedInEmail = normalizeEmail(session.user.email)
+      const configuredEmail = normalizeEmail(DB_ADMIN_EMAIL)
+
+      if (configuredEmail && signedInEmail === configuredEmail) {
+        console.log("[DbAdminLogin] authorized existing session — waiting for AuthContext to resolve")
+        emailAuthorized.current = true
+        // Effect 2 handles navigation once state.status transitions to "signed-in".
+      } else {
+        console.warn("[DbAdminLogin] existing session belongs to wrong account:", signedInEmail)
+        supabase.auth.signOut()
+        setIsChecking(false)
+      }
+    })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Effect 2: React to AuthContext state transitions ─────────────────────
+  // AuthContext's own onAuthStateChange listener calls resolveSession() which
+  // finds the profile and updates state. We watch those updates and navigate
+  // (or surface errors) accordingly. This is the ONLY place navigation happens.
+  useEffect(() => {
+    // Ignore transient loading/idle states — wait for a settled status.
+    if (state.status === "idle" || state.status === "loading") return
+
+    console.log("[DbAdminLogin] state changed —", state.status, "| role:", state.profile?.role ?? "none")
+
+    if (state.status === "signed-in" || state.status === "signed-in-past-due") {
+      if (state.profile?.role === "db_admin") {
+        console.log("[DbAdminLogin] db_admin profile confirmed — navigating to dashboard")
+        navigate("/app/dashboard", { replace: true })
+      } else {
+        // Signed in but wrong role — show error, don't sign them out (they may
+        // be a store user who navigated here by accident).
+        console.warn("[DbAdminLogin] signed in but not db_admin:", state.profile?.role)
+        setError("You don't have database admin access.")
+        setIsChecking(false)
+      }
+    } else if (state.status === "signed-out") {
+      if (emailAuthorized.current) {
+        // We verified the email was correct, but AuthContext signed out because
+        // it couldn't find a matching profile (auth_uid or google_email lookup failed).
+        console.error("[DbAdminLogin] AuthContext signed out after authorized email — profile not found")
+        setError("Admin profile not found. Contact your administrator.")
+      }
+      setIsChecking(false)
+    } else if (state.status === "error") {
+      console.error("[DbAdminLogin] AuthContext error:", state.error)
+      setError(state.error ?? "Authentication error.")
+      setIsChecking(false)
+    }
+  }, [state.status, state.profile, navigate])
 
   async function handleGoogleSignIn() {
     setIsLoading(true)
@@ -83,8 +168,8 @@ export function DbAdminLoginPage() {
       setError("Sign in failed. Please try again.")
       setIsLoading(false)
     }
-    // No error — browser navigates to Google, then back to /app/login/dbad
-    // The mount effect above detects the session on return
+    // On success the browser navigates to Google and back to /app/login/dbad.
+    // Effect 1 on the next mount handles the returned ?code= param.
   }
 
   if (isChecking) {
