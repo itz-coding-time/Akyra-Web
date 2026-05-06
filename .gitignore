@@ -32,3 +32,5 @@ Recovery.lol/
 .claude/
 "prompts 1/"
 *.zip
+/TODO
+tsc_output.txt
