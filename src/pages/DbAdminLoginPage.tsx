@@ -22,6 +22,7 @@ export function DbAdminLoginPage() {
   // Used by Effect 2 to distinguish "AuthContext signed out because no profile"
   // from "user just loaded the page with no session".
   const emailAuthorized = useRef(false)
+  const hasInitiatedAuth = useRef(false)
 
   // ── Effect 1: Handle OAuth redirect or existing session ──────────────────
   // When ?code= is in the URL (PKCE redirect), Supabase auto-exchanges it
@@ -29,6 +30,10 @@ export function DbAdminLoginPage() {
   // We listen for that event instead of calling getSession() immediately,
   // because the network round-trip hasn't completed yet at mount time.
   useEffect(() => {
+    console.log("[DbAdminLogin] Effect 1 running")
+
+    if (hasInitiatedAuth.current) return
+
     const params = new URLSearchParams(window.location.search)
     const code = params.get("code")
 
@@ -118,6 +123,8 @@ export function DbAdminLoginPage() {
   // finds the profile and updates state. We watch those updates and navigate
   // (or surface errors) accordingly. This is the ONLY place navigation happens.
   useEffect(() => {
+    console.log("[DbAdminLogin] Effect 2 running, status:", state.status)
+
     // Loading/idle states intentionally fall through; settled states act below.
 
     console.log("[DbAdminLogin] state changed —", state.status, "| role:", state.profile?.role ?? "none")
@@ -162,6 +169,8 @@ export function DbAdminLoginPage() {
   }, [isChecking, state.status])
 
   async function handleGoogleSignIn() {
+    console.log("[DbAdminLogin] handleGoogleSignIn called")
+    hasInitiatedAuth.current = true
     setIsLoading(true)
     setError(null)
 
