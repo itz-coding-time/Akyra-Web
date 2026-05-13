@@ -1,9 +1,8 @@
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { useAutoUpdate } from "./hooks"
 import { UpdateOverlay } from "./components"
-import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom"
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom"
 import { useAuth } from "./context"
-import { consumeOAuthRedirectSession } from "./lib/supabase"
 import {
   LandingPage,
   AboutPage,
@@ -25,6 +24,8 @@ import {
 } from "./pages"
 import { DashboardLayout, LoadingSpinner, PasskeyPrompt, EntryDisclaimer } from "./components"
 import { AssociateDashboard } from "./pages/associate/AssociateDashboard"
+
+const DB_ADMIN_OAUTH_STORAGE_KEY = "dbadmin_oauth_in_progress"
 
 function ProtectedRoute({ children, minRank = 1 }: { children: React.ReactNode; minRank?: number }) {
   const { state } = useAuth()
@@ -152,6 +153,24 @@ function RoleRouter() {
   )
 }
 
+function RootRoute() {
+  const location = useLocation()
+  const params = new URLSearchParams(location.search)
+  const isDbAdminOAuthReturn =
+    params.has("code") &&
+    sessionStorage.getItem(DB_ADMIN_OAUTH_STORAGE_KEY) === "true"
+
+  if (isDbAdminOAuthReturn) {
+    return <DbAdminLoginPage />
+  }
+
+  return (
+    <PublicRoute>
+      <LandingPage />
+    </PublicRoute>
+  )
+}
+
 function App() {
   const { isUpdating, newVersion } = useAutoUpdate()
   const [disclaimerAccepted, setDisclaimerAccepted] = useState(() => {
@@ -174,11 +193,7 @@ function App() {
         {/* Public landing surface */}
         <Route
           path="/"
-          element={
-            <PublicRoute>
-              <LandingPage />
-            </PublicRoute>
-          }
+          element={<RootRoute />}
         />
         <Route path="/about" element={<AboutPage />} />
         <Route path="/privacy" element={<PrivacyPage />} />

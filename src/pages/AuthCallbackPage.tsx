@@ -1,4 +1,5 @@
 import { useEffect } from "react"
+import type { Session } from "@supabase/supabase-js"
 import { useNavigate } from "react-router-dom"
 import { handleGoogleCallback } from "../lib"
 import { useAuth } from "../context"
@@ -6,27 +7,77 @@ import { AkyraLogo } from "../components/AkyraLogo"
 import { LoadingSpinner } from "../components/LoadingSpinner"
 import { consumeOAuthRedirectSession, supabase } from "../lib/supabase"
 
+const DB_ADMIN_OAUTH_STORAGE_KEY = "dbadmin_oauth_in_progress"
+const DB_ADMIN_FLOW_STORAGE_KEY = "dbadmin_flow"
+
+function waitForOAuthSession(): Promise<Session | null> {
+  return new Promise((resolve) => {
+    let settled = false
+    let unsubscribe: (() => void) | null = null
+    let timeout: number
+
+    const finish = (session: Session | null) => {
+      if (settled) return
+      settled = true
+      unsubscribe?.()
+      window.clearTimeout(timeout)
+      resolve(session)
+    }
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_IN" && session?.user) {
+        finish(session)
+      } else if (event === "SIGNED_OUT") {
+        finish(null)
+      }
+    })
+    unsubscribe = () => subscription.unsubscribe()
+
+    timeout = window.setTimeout(() => finish(null), 10000)
+  })
+}
+
 export function AuthCallbackPage() {
   const navigate = useNavigate()
   const { resolveSession } = useAuth()
 
   useEffect(() => {
     async function handleCallback() {
-      // Check if this is a dbad flow — if so, do nothing
-      // The DbAdminLoginPage handles its own auth state
-      const isDbAdmin = sessionStorage.getItem("dbadmin_flow") === "true"
+      const isDbAdmin =
+        sessionStorage.getItem(DB_ADMIN_FLOW_STORAGE_KEY) === "true" ||
+        sessionStorage.getItem(DB_ADMIN_OAUTH_STORAGE_KEY) === "true"
+
       if (isDbAdmin) {
-        sessionStorage.removeItem("dbadmin_flow")
-        // DbAdminLoginPage's onAuthStateChange will handle this
+        navigate("/app/login/dbad", { replace: true })
         return
       }
 
       const eeid = sessionStorage.getItem("pending_google_eeid")
       sessionStorage.removeItem("pending_google_eeid")
 
-      await consumeOAuthRedirectSession()
+      const url = new URL(window.location.href)
+      const hasOAuthCode = url.searchParams.has("code") || window.location.hash.includes("access_token=")
+      let session: Session | null = null
 
-      const { data: { session } } = await supabase.auth.getSession()
+      if (hasOAuthCode) {
+        await consumeOAuthRedirectSession()
+        session = await waitForOAuthSession()
+
+        if (!session) {
+          const retryUrl = new URL(window.location.href)
+          const codeCleared =
+            !retryUrl.searchParams.has("code") &&
+            !window.location.hash.includes("access_token=")
+
+          if (codeCleared) {
+            const { data } = await supabase.auth.getSession()
+            session = data.session
+          }
+        }
+      } else {
+        const { data } = await supabase.auth.getSession()
+        session = data.session
+      }
 
       if (!session) {
         navigate("/app/login", { replace: true })
@@ -38,17 +89,17 @@ export function AuthCallbackPage() {
         return
       }
 
-      const result = await handleGoogleCallback(eeid)
+      const result = await handleGoogleCallback(eeid, session)
 
       if (result.kind === "success") {
-        await resolveSession()
+        await resolveSession(session)
         navigate("/app/dashboard", { replace: true })
       } else {
         navigate("/app/login", { replace: true })
       }
     }
 
-    handleCallback()
+    void handleCallback()
   }, [navigate, resolveSession])
 
   return (
