@@ -279,7 +279,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // When called from onAuthStateChange, the session is passed directly to avoid
     // a race where getSession() returns null before the session is persisted.
     // When called on page refresh (no session available), we fetch it ourselves.
-    const session = passedSession ?? (await supabase.auth.getSession()).data.session
+    let session: Session | null
+    if (passedSession) {
+      session = passedSession
+    } else {
+      const { data } = await supabase.auth.getSession()
+      session = data.session
+    }
+    console.log("[AuthContext] resolveSession — using passed session:", !!passedSession)
     if (!session?.user) return null
 
     // Try to find profile by auth_uid first
