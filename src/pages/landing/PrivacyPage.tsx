@@ -21,7 +21,7 @@ export function PrivacyPage() {
             </p>
 
             <p>
-              This platform — including its design, code, architecture, and all associated intellectual property — is the exclusive property of Brandon Case. All rights reserved.
+              This platform — including its design, code, architecture, and all associated intellectual property — is the exclusive property of CasiraSmarts LLC. All rights reserved.
             </p>
 
             <p>
