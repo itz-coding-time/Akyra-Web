@@ -82,6 +82,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // sets it to false, but the previous async callback still holds the old false
   // value and skips setState, leaving status stuck at "loading".
   const mountedRef = useRef(true)
+  const scheduledSessionKeyRef = useRef<string | null>(null)
+  const scheduledSessionTimeoutRef = useRef<number | null>(null)
 
   const resolveSessionState = useCallback(async (profile: Profile) => {
     let license: Awaited<ReturnType<typeof fetchLicenseForProfile>>
@@ -166,7 +168,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setState((s) => ({ ...s, status: "loading" }))
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+      (event, session) => {
         if (!mountedRef.current) return
         console.log("[AuthContext] onAuthStateChange event:", event, !!session?.user)
 
@@ -174,18 +176,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // Pass the session directly so resolveSession doesn't need to call
           // getSession() internally — avoids the race where it returns null
           // before the session has been persisted to storage.
-          const profile = await resolveSession(session)
-
-          if (profile) {
-            console.log("[AuthContext] session resolved successfully")
-          } else {
-            // Profile missing — might be a "Claim Account" flow in progress.
-            // We stay in "loading" or "idle" rather than force "signed-out" if we have a session.
-            console.log("[AuthContext] session present but no profile resolved yet")
+          const sessionKey = `${session.user.id}:${session.access_token}`
+          if (scheduledSessionKeyRef.current === sessionKey) {
+            console.log("[AuthContext] session resolution already scheduled")
+            return
           }
+
+          scheduledSessionKeyRef.current = sessionKey
+          if (scheduledSessionTimeoutRef.current !== null) {
+            window.clearTimeout(scheduledSessionTimeoutRef.current)
+          }
+
+          console.log("[AuthContext] scheduling session resolution")
+          scheduledSessionTimeoutRef.current = window.setTimeout(() => {
+            scheduledSessionTimeoutRef.current = null
+            console.log("[AuthContext] running scheduled session resolution")
+
+            void resolveSession(session)
+              .then((profile) => {
+                console.log("[AuthContext] scheduled session resolved")
+                if (!profile) {
+                  console.log("[AuthContext] session present but no profile resolved yet")
+                }
+              })
+              .catch((error) => {
+                console.error("[AuthContext] scheduled session resolution failed", error)
+              })
+          }, 0)
         } else if (event === "SIGNED_OUT" || (event === "TOKEN_REFRESHED" && !session)) {
+          scheduledSessionKeyRef.current = null
+          if (scheduledSessionTimeoutRef.current !== null) {
+            window.clearTimeout(scheduledSessionTimeoutRef.current)
+            scheduledSessionTimeoutRef.current = null
+          }
           if (mountedRef.current) setState({ status: "signed-out", profile: null, licenseWarning: null, error: null })
         } else if (!session?.user) {
+          scheduledSessionKeyRef.current = null
+          if (scheduledSessionTimeoutRef.current !== null) {
+            window.clearTimeout(scheduledSessionTimeoutRef.current)
+            scheduledSessionTimeoutRef.current = null
+          }
           if (mountedRef.current) setState({ status: "signed-out", profile: null, licenseWarning: null, error: null })
         }
       }
@@ -193,6 +223,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     return () => {
       mountedRef.current = false
+      if (scheduledSessionTimeoutRef.current !== null) {
+        window.clearTimeout(scheduledSessionTimeoutRef.current)
+        scheduledSessionTimeoutRef.current = null
+      }
       subscription.unsubscribe()
     }
   }, [resolveSessionState])
