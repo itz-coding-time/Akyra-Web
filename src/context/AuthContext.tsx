@@ -289,6 +289,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     console.log("[AuthContext] resolveSession — using passed session:", !!passedSession)
     if (!session?.user) return null
 
+    // Clear the OAuth code from the URL to prevent the Supabase client
+    // from attempting a second PKCE exchange on the first fetch call,
+    // which causes a deadlock.
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href)
+      if (url.searchParams.has("code")) {
+        url.searchParams.delete("code")
+        window.history.replaceState({}, document.title, url.toString())
+        console.log("[AuthContext] resolveSession — cleared ?code= from URL")
+      }
+    }
+
     // Try to find profile by auth_uid first
     const { data: profile } = await supabase
       .from("profiles")
