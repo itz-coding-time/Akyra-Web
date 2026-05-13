@@ -2,6 +2,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useRef,
   useState,
   useCallback,
   type ReactNode,
@@ -55,6 +56,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [orgBranding, setOrgBranding] = useState<OrgBranding | null>(null)
   const [orgStations, setOrgStations] = useState<OrgStation[]>([])
 
+  // A ref rather than a closure variable so it reflects the true current mount
+  // state even across re-runs of the effect or a remount during OAuth redirect.
+  // A closure-captured `let mounted` goes stale when the effect re-runs: cleanup
+  // sets it to false, but the previous async callback still holds the old false
+  // value and skips setState, leaving status stuck at "loading".
+  const mountedRef = useRef(true)
+
   const resolveSessionState = useCallback(async (profile: Profile) => {
     const license = await fetchLicenseForProfile(profile)
 
@@ -99,12 +107,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Restore session on mount
   useEffect(() => {
-    let mounted = true
+    // Reset to true on each effect run (covers the case where the effect
+    // re-runs after a dep change and the previous cleanup set the ref false).
+    mountedRef.current = true
     setState((s) => ({ ...s, status: "loading" }))
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        if (!mounted) return
+        if (!mountedRef.current) return
         console.log("[AuthContext] onAuthStateChange event:", event, !!session?.user)
 
         if ((event === "INITIAL_SESSION" || event === "SIGNED_IN" || event === "TOKEN_REFRESHED") && session?.user) {
@@ -112,26 +122,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // getSession() internally — avoids the race where it returns null
           // before the session has been persisted to storage.
           const profile = await resolveSession(session)
-          
-          if (!mounted) return
+
+          // Use mountedRef.current rather than a closure-captured `mounted`.
+          // If this component remounted during the await (OAuth redirect), the
+          // new effect run already set mountedRef.current back to true, so
+          // setState fires correctly instead of being silently dropped.
+          if (!mountedRef.current) return
 
           if (profile) {
             console.log("[AuthContext] session resolved successfully")
           } else {
-            // Profile missing — might be a "Claim Account" flow in progress. 
+            // Profile missing — might be a "Claim Account" flow in progress.
             // We stay in "loading" or "idle" rather than force "signed-out" if we have a session.
             console.log("[AuthContext] session present but no profile resolved yet")
           }
         } else if (event === "SIGNED_OUT" || (event === "TOKEN_REFRESHED" && !session)) {
-          if (mounted) setState({ status: "signed-out", profile: null, licenseWarning: null, error: null })
+          if (mountedRef.current) setState({ status: "signed-out", profile: null, licenseWarning: null, error: null })
         } else if (!session?.user) {
-          if (mounted) setState({ status: "signed-out", profile: null, licenseWarning: null, error: null })
+          if (mountedRef.current) setState({ status: "signed-out", profile: null, licenseWarning: null, error: null })
         }
       }
     )
 
     return () => {
-      mounted = false
+      mountedRef.current = false
       subscription.unsubscribe()
     }
   }, [resolveSessionState])
