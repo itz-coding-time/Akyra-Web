@@ -6,6 +6,7 @@ import {
   useCallback,
   type ReactNode,
 } from "react"
+import type { Session } from "@supabase/supabase-js"
 import { supabase } from "../lib/supabase"
 import {
   fetchProfileByEeidAndOrg,
@@ -37,7 +38,7 @@ interface AuthContextValue {
     orgId: string,
     storeId: string
   ) => Promise<SignInResult>
-  resolveSession: () => Promise<Profile | null>
+  resolveSession: (session?: Session | null) => Promise<Profile | null>
   signOut: () => Promise<void>
   dismissPasskeyPrompt: () => void
 }
@@ -107,8 +108,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.log("[AuthContext] onAuthStateChange event:", event, !!session?.user)
 
         if ((event === "INITIAL_SESSION" || event === "SIGNED_IN" || event === "TOKEN_REFRESHED") && session?.user) {
-          // Robust session resolution — handles linking race conditions
-          const profile = await resolveSession()
+          // Pass the session directly so resolveSession doesn't need to call
+          // getSession() internally — avoids the race where it returns null
+          // before the session has been persisted to storage.
+          const profile = await resolveSession(session)
           
           if (!mounted) return
 
@@ -263,8 +266,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [resolveSessionState]
   )
 
-  const resolveSession = useCallback(async () => {
-    const { data: { session } } = await supabase.auth.getSession()
+  const resolveSession = useCallback(async (passedSession?: Session | null) => {
+    // When called from onAuthStateChange, the session is passed directly to avoid
+    // a race where getSession() returns null before the session is persisted.
+    // When called on page refresh (no session available), we fetch it ourselves.
+    const session = passedSession ?? (await supabase.auth.getSession()).data.session
     if (!session?.user) return null
 
     // Try to find profile by auth_uid first
