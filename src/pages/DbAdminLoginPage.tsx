@@ -68,7 +68,9 @@ export function DbAdminLoginPage() {
 
       console.warn("[DbAdminLogin] unauthorized email:", signedInEmail)
       clearDbAdminOAuthState()
-      void supabase.auth.signOut()
+      window.setTimeout(() => {
+        void supabase.auth.signOut()
+      }, 0)
       setError("Unauthorized Google account.")
       setIsChecking(false)
     }
@@ -133,7 +135,7 @@ export function DbAdminLoginPage() {
       clearDbAdminOAuthState()
       setError("Something went wrong. Please try again.")
       setIsChecking(false)
-    }, 10000)
+    }, 20000)
 
     return () => window.clearTimeout(timeout)
   }, [isChecking, state.status])
