@@ -118,8 +118,7 @@ export function DbAdminLoginPage() {
   // finds the profile and updates state. We watch those updates and navigate
   // (or surface errors) accordingly. This is the ONLY place navigation happens.
   useEffect(() => {
-    // Ignore transient loading/idle states — wait for a settled status.
-    if (state.status === "idle" || state.status === "loading") return
+    // Loading/idle states intentionally fall through; settled states act below.
 
     console.log("[DbAdminLogin] state changed —", state.status, "| role:", state.profile?.role ?? "none")
 
@@ -127,7 +126,7 @@ export function DbAdminLoginPage() {
       if (state.profile?.role === "db_admin") {
         console.log("[DbAdminLogin] db_admin profile confirmed — navigating to dashboard")
         navigate("/app/dashboard", { replace: true })
-      } else {
+      } else if (state.profile) {
         // Signed in but wrong role — show error, don't sign them out (they may
         // be a store user who navigated here by accident).
         console.warn("[DbAdminLogin] signed in but not db_admin:", state.profile?.role)
@@ -147,7 +146,20 @@ export function DbAdminLoginPage() {
       setError(state.error ?? "Authentication error.")
       setIsChecking(false)
     }
-  }, [state.status, state.profile, navigate])
+  }, [state.status, state.profile, navigate, state.error])
+
+  // Safety net: if auth never reaches a settled state, don't strand the page
+  // on the spinner forever.
+  useEffect(() => {
+    if (!isChecking || (state.status !== "idle" && state.status !== "loading")) return
+
+    const timeout = window.setTimeout(() => {
+      setError("Something went wrong. Please try again.")
+      setIsChecking(false)
+    }, 10000)
+
+    return () => window.clearTimeout(timeout)
+  }, [isChecking, state.status])
 
   async function handleGoogleSignIn() {
     setIsLoading(true)

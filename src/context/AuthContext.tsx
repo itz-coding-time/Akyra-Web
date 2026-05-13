@@ -123,12 +123,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // before the session has been persisted to storage.
           const profile = await resolveSession(session)
 
-          // Use mountedRef.current rather than a closure-captured `mounted`.
-          // If this component remounted during the await (OAuth redirect), the
-          // new effect run already set mountedRef.current back to true, so
-          // setState fires correctly instead of being silently dropped.
-          if (!mountedRef.current) return
-
           if (profile) {
             console.log("[AuthContext] session resolved successfully")
           } else {
@@ -281,6 +275,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 
   const resolveSession = useCallback(async (passedSession?: Session | null) => {
+    console.log("[AuthContext] resolveSession — start")
     // When called from onAuthStateChange, the session is passed directly to avoid
     // a race where getSession() returns null before the session is persisted.
     // When called on page refresh (no session available), we fetch it ourselves.
@@ -294,7 +289,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .eq("auth_uid", session.user.id)
       .maybeSingle()
 
+    console.log("[AuthContext] resolveSession — profile found:", !!profile)
+
     if (profile) {
+      console.log("[AuthContext] resolveSession — calling resolveSessionState")
       await resolveSessionState(profile)
       return profile
     }
@@ -319,12 +317,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           ...profileByEmail,
           auth_uid: profileByEmail.auth_uid ?? session.user.id,
         }
+        console.log("[AuthContext] resolveSession — profile found:", true)
+        console.log("[AuthContext] resolveSession — calling resolveSessionState")
         await resolveSessionState(resolvedProfile)
         return resolvedProfile
       }
     }
 
     // No profile found — sign out
+    console.log("[AuthContext] resolveSession — profile found:", false)
     await supabase.auth.signOut()
     setState({ status: "signed-out", profile: null, licenseWarning: null, error: null })
     return null
