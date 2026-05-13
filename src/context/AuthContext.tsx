@@ -45,6 +45,26 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
+const SESSION_RESOLUTION_TIMEOUT_MS = 10000
+
+function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(() => {
+      reject(new Error(`${label} timed out`))
+    }, SESSION_RESOLUTION_TIMEOUT_MS)
+
+    promise.then(
+      (value) => {
+        window.clearTimeout(timeout)
+        resolve(value)
+      },
+      (error) => {
+        window.clearTimeout(timeout)
+        reject(error)
+      }
+    )
+  })
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({
@@ -64,7 +84,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const mountedRef = useRef(true)
 
   const resolveSessionState = useCallback(async (profile: Profile) => {
-    const license = await fetchLicenseForProfile(profile)
+    let license: Awaited<ReturnType<typeof fetchLicenseForProfile>>
+
+    try {
+      console.log("[AuthContext] resolveSessionState — fetching license")
+      license = await withTimeout(fetchLicenseForProfile(profile), "fetchLicenseForProfile")
+      console.log("[AuthContext] resolveSessionState — license fetched:", !!license)
+    } catch (error) {
+      console.error("[AuthContext] resolveSessionState — license check failed", error)
+      setState({
+        status: "error",
+        profile: null,
+        licenseWarning: null,
+        error: "Could not verify access. Please try again.",
+      })
+      return
+    }
 
     if (license && !isLicenseUsable(license)) {
       await supabaseSignOut()
@@ -82,27 +117,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         ? "Your organization's subscription is past due. Access will end soon if not resolved."
         : null
 
-    // Check passkey enrollment
-    const dismissed = sessionStorage.getItem("passkey_prompt_dismissed") === "true"
-    const passkeySupported = isPasskeySupported()
-    const enrolled = passkeySupported ? await hasPasskeyEnrolled() : false
-
     setState({
       status: warning ? "signed-in-past-due" : "signed-in",
       profile,
       licenseWarning: warning,
       error: null,
-      showPasskeyPrompt: passkeySupported && !enrolled && !dismissed,
+      showPasskeyPrompt: false,
     })
 
-    if (profile.org_id) {
-      const [branding, stations] = await Promise.all([
-        fetchOrgBranding(profile.org_id),
-        fetchOrgStations(profile.org_id),
-      ])
-      setOrgBranding(branding)
-      setOrgStations(stations)
-    }
+    void (async () => {
+      try {
+        console.log("[AuthContext] resolveSessionState — checking passkey enrollment")
+        const dismissed = sessionStorage.getItem("passkey_prompt_dismissed") === "true"
+        const passkeySupported = isPasskeySupported()
+        const enrolled = passkeySupported ? await hasPasskeyEnrolled() : false
+        console.log("[AuthContext] resolveSessionState — passkey enrollment checked:", enrolled)
+
+        setState((current) => ({
+          ...current,
+          showPasskeyPrompt: passkeySupported && !enrolled && !dismissed,
+        }))
+      } catch (error) {
+        console.error("[AuthContext] resolveSessionState — passkey check failed", error)
+      }
+
+      if (profile.org_id) {
+        try {
+          console.log("[AuthContext] resolveSessionState — fetching org context")
+          const [branding, stations] = await Promise.all([
+            fetchOrgBranding(profile.org_id),
+            fetchOrgStations(profile.org_id),
+          ])
+          console.log("[AuthContext] resolveSessionState — org context fetched")
+          setOrgBranding(branding)
+          setOrgStations(stations)
+        } catch (error) {
+          console.error("[AuthContext] resolveSessionState — org context fetch failed", error)
+        }
+      }
+    })()
   }, [])
 
   // Restore session on mount
@@ -283,30 +336,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (passedSession) {
       session = passedSession
     } else {
+      if (typeof window !== "undefined") {
+        const url = new URL(window.location.href)
+        if (url.searchParams.has("code") || window.location.hash.includes("access_token=")) {
+          console.warn("[AuthContext] resolveSession — skipped getSession while OAuth code is present")
+          return null
+        }
+      }
       const { data } = await supabase.auth.getSession()
       session = data.session
     }
     console.log("[AuthContext] resolveSession — using passed session:", !!passedSession)
     if (!session?.user) return null
 
-    // Clear the OAuth code from the URL to prevent the Supabase client
-    // from attempting a second PKCE exchange on the first fetch call,
-    // which causes a deadlock.
-    if (typeof window !== "undefined") {
-      const url = new URL(window.location.href)
-      if (url.searchParams.has("code")) {
-        url.searchParams.delete("code")
-        window.history.replaceState({}, document.title, url.toString())
-        console.log("[AuthContext] resolveSession — cleared ?code= from URL")
+    try {
+      // Clear the OAuth code from the URL to prevent the Supabase client
+      // from attempting a second PKCE exchange on the first fetch call,
+      // which causes a deadlock.
+      if (typeof window !== "undefined") {
+        const url = new URL(window.location.href)
+        if (url.searchParams.has("code")) {
+          url.searchParams.delete("code")
+          window.history.replaceState({}, document.title, url.toString())
+          console.log("[AuthContext] resolveSession — cleared ?code= from URL")
+        }
       }
+    } catch (error) {
+      console.error("[AuthContext] resolveSession — failed to clear ?code= from URL", error)
     }
-
-    // Try to find profile by auth_uid first
-    const { data: profile } = await supabase
-      .from("profiles")
+    console.log("[AuthContext] resolveSession — querying profile")
+    const { data: profile, error: profileError } = await supabase.from("profiles")
       .select("*")
       .eq("auth_uid", session.user.id)
       .maybeSingle()
+
+    if (profileError) {
+      console.error("[AuthContext] resolveSession — profile query failed:", profileError.message)
+      setState({
+        status: "error",
+        profile: null,
+        licenseWarning: null,
+        error: "Could not load your profile. Please try again.",
+      })
+      return null
+    }
 
     console.log("[AuthContext] resolveSession — profile found:", !!profile)
 
@@ -318,19 +391,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Try to find profile by google_email (for db_admin Google OAuth flow)
     if (session.user.email) {
-      const { data: profileByEmail } = await supabase
+      console.log("[AuthContext] resolveSession — querying profile by google_email")
+      const { data: profileByEmail, error: profileByEmailError } = await supabase
         .from("profiles")
         .select("*")
         .eq("google_email", session.user.email)
         .maybeSingle()
 
+      if (profileByEmailError) {
+        console.error("[AuthContext] resolveSession — google_email profile query failed:", profileByEmailError.message)
+        setState({
+          status: "error",
+          profile: null,
+          licenseWarning: null,
+          error: "Could not load your profile. Please try again.",
+        })
+        return null
+      }
+
       if (profileByEmail) {
         // Link auth_uid if not already linked
         if (!profileByEmail.auth_uid) {
-          await supabase
+          const { error: updateProfileError } = await supabase
             .from("profiles")
             .update({ auth_uid: session.user.id })
             .eq("id", profileByEmail.id)
+
+          if (updateProfileError) {
+            console.error("[AuthContext] resolveSession — auth_uid link failed:", updateProfileError.message)
+            setState({
+              status: "error",
+              profile: null,
+              licenseWarning: null,
+              error: "Could not link your Google account. Please try again.",
+            })
+            return null
+          }
         }
         const resolvedProfile = {
           ...profileByEmail,

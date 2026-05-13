@@ -1,4 +1,5 @@
 import { supabase } from '../supabase'
+import type { Session } from "@supabase/supabase-js"
 import type { Database } from "../../types/database.types"
 import type { PullEventSummary } from "../../types/pullWorkflow.types"
 import type { StoreConfigAssociate, StoreConfigTask, StoreConfigInventoryItem, StoreConfigTableItem, StoreConfig } from "../../types/storeConfig.types"
@@ -49,10 +50,18 @@ export async function signInWithGoogle(redirectTo: string): Promise<void> {
  * Enforces db_admin whitelist.
  */
 export async function handleGoogleCallback(
-  eeid: string
+  eeid: string,
+  passedSession?: Session | null
 ): Promise<{ kind: "success"; profile: Profile } | { kind: "error"; message: string } | { kind: "not_linked" }> {
   // Get the current session from Supabase (set by OAuth callback)
-  const { data: { session }, error } = await supabase.auth.getSession()
+  let session = passedSession ?? null
+  let error = null
+
+  if (!session) {
+    const result = await supabase.auth.getSession()
+    session = result.data.session
+    error = result.error
+  }
 
   if (error || !session) {
     return { kind: "error", message: "Google sign in failed. Please try again." }
