@@ -89,9 +89,24 @@ export function OrgRadialMenu({
     }
     document.addEventListener("touchstart", handler, { passive: true })
     document.addEventListener("mousedown", handler)
+
+    // Lock body scroll to prevent PWA pull-to-refresh
+    const originalOverscroll = document.body.style.overscrollBehavior
+    const originalOverflow = document.body.style.overflow
+    const originalTouchAction = document.body.style.touchAction
+
+    document.body.style.overscrollBehavior = "none"
+    document.body.style.overflow = "hidden"
+    document.body.style.touchAction = "none"
+
     return () => {
       document.removeEventListener("touchstart", handler)
       document.removeEventListener("mousedown", handler)
+
+      // Restore body scroll
+      document.body.style.overscrollBehavior = originalOverscroll
+      document.body.style.overflow = originalOverflow
+      document.body.style.touchAction = originalTouchAction
     }
   }, [onDismiss])
 
@@ -152,9 +167,23 @@ export function OrgRadialMenu({
             onMouseDown={isLeft ? e => { e.stopPropagation(); handleLeftStart() } : undefined}
             onMouseUp={isLeft ? e => { e.stopPropagation(); handleLeftEnd() } : undefined}
             onMouseLeave={isLeft ? e => { e.stopPropagation(); handleLeftEnd() } : undefined}
-            onTouchStart={isLeft ? e => { e.stopPropagation(); handleLeftStart() } : undefined}
-            onTouchEnd={isLeft ? e => { e.stopPropagation(); handleLeftEnd() } : undefined}
-            onTouchCancel={isLeft ? e => { e.stopPropagation(); handleLeftEnd() } : undefined}
+            onTouchStart={e => {
+              e.stopPropagation()
+              if (isLeft) handleLeftStart()
+            }}
+            onTouchEnd={e => {
+              e.stopPropagation()
+              e.preventDefault()
+              if (isLeft) {
+                handleLeftEnd()
+              } else {
+                handleActionTap(action)
+              }
+            }}
+            onTouchCancel={e => {
+              e.stopPropagation()
+              if (isLeft) handleLeftEnd()
+            }}
           >
             {action.icon}
             <span className="text-[8px] uppercase tracking-wider leading-none">
